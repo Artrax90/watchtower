@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>watchtower — uptime & SSL monitoring</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="not-authenticated">
+  <div class="app">
+    <!-- Sidebar -->
+    <aside>
+      <a class="brand" href="/overview" id="navBrand">
+        <span class="brand-mark"><i data-lucide="radar"></i></span>
+        <span>watchtower</span>
+      </a>
+
+      <nav>
+        <a class="active" href="/overview" id="navOverview"><i data-lucide="layout-dashboard"></i>Обзор</a>
+        <a href="/monitors" id="navMonitors"><i data-lucide="heart-pulse"></i>Мониторы <em id="navMonitorCount">0</em></a>
+        <a href="/incidents" id="navIncidents"><i data-lucide="siren"></i>Инциденты <em class="bad-num" id="navIncidentCount">0</em></a>
+      </nav>
+
+      <div class="nav-cap">НАСТРОЙКИ</div>
+      <nav>
+        <a href="/alerts" id="navAlerts"><i data-lucide="bell-ring"></i>Оповещения</a>
+        <a href="/admin" id="navAdmin"><i data-lucide="shield"></i>Администрирование</a>
+        <a href="/settings" id="navSettings"><i data-lucide="settings-2"></i>Настройки</a>
+      </nav>
+
+      <div class="aside-bottom">
+        <button class="user" id="userBtn">
+          <span id="userAvatar">A</span>
+          <b id="userName">Вход</b>
+          <i data-lucide="log-in" id="userIcon"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="mainContent">
+      <header>
+        <div class="breadcrumb">
+          <span id="crumbTitle">Обзор</span>
+          <i data-lucide="chevron-right"></i>
+          <b id="crumbWorkspace">Production</b>
+        </div>
+        <div class="head-actions">
+          <button class="icon-btn" id="themeToggle" aria-label="Сменить тему">
+            <i data-lucide="moon"></i>
+          </button>
+          <button class="icon-btn" id="notificationsBtn" aria-label="Каналы оповещений" title="Настройки Telegram & MAX">
+            <i data-lucide="bell-ring"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- View: Overview Intro -->
+      <section class="intro" id="introOverview">
+        <div>
+          <h1>Обзор инфраструктуры</h1>
+          <p>Сводка доступности, задержки и SSL-сертификатов сервисов в реальном времени.</p>
+        </div>
+        <div class="intro-right">
+          <span class="overall" id="systemStatusBadge"><i></i> Все системы наблюдаются</span>
+          <button class="period" id="refreshBtn"><i data-lucide="refresh-cw"></i> Обновить сейчас</button>
+        </div>
+      </section>
+
+      <!-- View: Monitors Intro -->
+      <section class="intro" id="introMonitors" style="display:none">
+        <div>
+          <h1>Мониторы сервисов</h1>
+          <p>Управление мониторами, проверка доступности HTTP/HTTPS, Ping (ICMP), SSL, TCP и DNS.</p>
+        </div>
+        <div class="intro-right">
+          <button class="add add-monitor-btn" id="addMonitor"><i data-lucide="plus"></i> Добавить монитор</button>
+        </div>
+      </section>
+
+      <!-- View: Incidents Intro -->
+      <section class="intro" id="introIncidents" style="display:none">
+        <div>
+          <h1>Журнал инцидентов</h1>
+          <p>Активные инциденты, диагностика сбоев и история времени отклика сервисов.</p>
+        </div>
+      </section>
+
+      <!-- View: Alerts Intro -->
+      <section class="intro" id="introAlerts" style="display:none">
+        <div>
+          <h1>Каналы оповещений</h1>
+          <p>Настройка моментальных уведомлений о падении и восстановлении в Telegram и мессенджер MAX.</p>
+        </div>
+      </section>
+
+      <!-- View: Admin Intro -->
+      <section class="intro" id="introAdmin" style="display:none">
+        <div>
+          <h1>Администрирование</h1>
+          <p>Управление пользователями, распределение ролей (Администратор / Наблюдатель) и безопасность.</p>
+        </div>
+      </section>
+
+      <!-- View: Settings Intro -->
+      <section class="intro" id="introSettings" style="display:none">
+        <div>
+          <h1>Настройки приложения</h1>
+          <p>Конфигурация темы, частоты обновления дашборда и параметры инсталляции Watchtower.</p>
+        </div>
+      </section>
+
+      <!-- 4 Top Cards (Shown on /overview) -->
+      <section class="summary" id="sectionSummary">
+        <article>
+          <span class="summary-icon purple"><i data-lucide="boxes"></i></span>
+          <p>Всего мониторов</p>
+          <strong id="statTotalMonitors">0</strong>
+          <small><b id="statMonitorsSubtitle">0 активных</b></small>
+        </article>
+        <article>
+          <span class="summary-icon green"><i data-lucide="check-circle-2"></i></span>
+          <p>Доступны</p>
+          <strong id="statOnlineMonitors">0</strong>
+          <small id="statUptimePercent">100% от всех сервисов</small>
+        </article>
+        <article>
+          <span class="summary-icon amber"><i data-lucide="timer-reset"></i></span>
+          <p>Средняя задержка</p>
+          <strong><span id="statAvgLatency">0</span> <em>мс</em></strong>
+          <small>за последние проверки</small>
+        </article>
+        <article>
+          <span class="summary-icon red"><i data-lucide="shield-alert"></i></span>
+          <p>Нужны действия</p>
+          <strong id="statActionNeeded">0</strong>
+          <small><b class="red-text" id="statCriticalIncidents">0 критических</b></small>
+        </article>
+      </section>
+
+      <!-- Monitor Table Section (Shown on /overview and /monitors) -->
+      <section class="monitor-card" id="sectionMonitors">
+        <div class="monitor-top">
+          <div>
+            <h2>Состояние сервисов</h2>
+            <p id="tableSubtitle">Загрузка данных...</p>
+          </div>
+          <div class="tools">
+            <label class="search">
+              <i data-lucide="search"></i>
+              <input id="searchInput" placeholder="Поиск монитора" aria-label="Поиск монитора">
+            </label>
+            <button class="filter" id="filterBtn"><i data-lucide="sliders-horizontal"></i> Фильтр</button>
+          </div>
+        </div>
+
+        <div class="groups">
+          <button class="group active" data-filter="all">Все <b id="groupAllCount">0</b></button>
+          <button class="group" data-filter="online">Работают <b id="groupOnlineCount">0</b></button>
+          <button class="group" data-filter="issues">Проблемы <b id="groupIssuesCount">0</b></button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Монитор</th>
+                <th>Статус</th>
+                <th>Uptime за 24 ч</th>
+                <th>Latency</th>
+                <th>Последняя проверка</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="monitorsTbody">
+              <!-- Dynamically rendered rows -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Bottom Grid: Incidents & Response Time (Shown on /overview and /incidents) -->
+      <section class="bottom-grid" id="sectionBottomGrid">
+        <article class="incident-card" id="incidents">
+          <div class="card-heading">
+            <div>
+              <h2>Активные инциденты <b id="incidentBadgeCount">0</b></h2>
+              <p>Требуют внимания вашей команды</p>
+            </div>
+          </div>
+          <div id="incidentsList">
+            <!-- Dynamically rendered incident rows -->
+          </div>
+        </article>
+
+        <article class="response-card">
+          <div class="card-heading">
+            <div>
+              <h2>Время отклика</h2>
+              <p>Среднее значение за последние часы</p>
+            </div>
+            <b class="chart-value"><span id="chartAvgValue">0</span> <small>мс</small></b>
+          </div>
+          <div class="bar-chart" id="latencyBarChart">
+            <!-- Dynamic bars -->
+          </div>
+          <div class="chart-axis" id="chartAxis">
+            <span>12 ч назад</span>
+            <span>6 ч назад</span>
+            <span>3 ч назад</span>
+            <span>сейчас</span>
+          </div>
+        </article>
+      </section>
+
+      <!-- View: Alerts Channel View Panel (Shown on /alerts) -->
+      <section class="settings-view-card" id="sectionAlerts" style="display:none">
+        <div style="margin-bottom:16px">
+          <h2 style="font-size:15px;margin:0 0 4px">Каналы оповещений</h2>
+          <p style="font-size:11px;color:var(--muted);margin:0">Настройте ботов для мгновенной доставки сообщений об инцидентах.</p>
+        </div>
+
+        <div class="nav-tabs">
+          <button type="button" class="nav-tab active" data-tab="tgTab">
+            <i data-lucide="send"></i> Telegram Bot
+          </button>
+          <button type="button" class="nav-tab" data-tab="maxTab">
+            <i data-lucide="message-square"></i> Мессенджер MAX
+          </button>
+        </div>
+
+        <div class="alert-box error" id="notifError" style="display:none"></div>
+        <div class="alert-box success" id="notifSuccess" style="display:none"></div>
+
+        <!-- Telegram Tab Form -->
+        <div id="tgTab" class="tab-content">
+          <form id="tgForm">
+            <div class="form-group" style="margin-bottom:14px">
+              <label class="form-checkbox-label">
+                <input type="checkbox" id="tgEnabled" checked>
+                <b>Включить оповещения в Telegram</b>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="tgBotToken">Bot Token</label>
+              <input type="password" class="form-input" id="tgBotToken" placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ" required>
+              <small>Токен бота, полученный у @BotFather в Telegram</small>
+            </div>
+            <div class="form-group">
+              <label for="tgChatId">Chat ID</label>
+              <input type="text" class="form-input" id="tgChatId" placeholder="например, -100123456789 или 12345678" required>
+              <small>Идентификатор чата, группы или канала</small>
+            </div>
+            <div style="border-top:1px solid var(--line);margin:16px 0 12px;padding-top:14px">
+              <label style="font-size:11px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px">
+                <i data-lucide="shield" style="width:14px;color:var(--primary)"></i> Прокси-сервер для Telegram
+              </label>
+              <small style="color:var(--muted);font-size:9.5px;display:block;margin-top:2px">Используйте прокси, если сервер находится в изолированной сети или api.telegram.org блокируется</small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex:1">
+                <label for="tgProxyType">Тип прокси</label>
+                <select class="form-select" id="tgProxyType">
+                  <option value="none" selected>Прямое подключение (Без прокси)</option>
+                  <option value="socks5">SOCKS5 (рекомендуется)</option>
+                  <option value="http">HTTP</option>
+                  <option value="https">HTTPS</option>
+                  <option value="socks4">SOCKS4</option>
+                </select>
+              </div>
+              <div class="form-group" id="tgProxyPortGroup" style="width:120px;display:none">
+                <label for="tgProxyPort">Порт</label>
+                <input type="number" class="form-input" id="tgProxyPort" placeholder="1080" min="1" max="65535">
+              </div>
+            </div>
+
+            <div id="tgProxyFields" style="display:none;margin-top:10px">
+              <div class="form-group" style="margin-bottom:10px">
+                <label for="tgProxyHost">Адрес сервера (IP или Домен)</label>
+                <input type="text" class="form-input" id="tgProxyHost" placeholder="например, 127.0.0.1 или proxy.example.com">
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="tgProxyUser">Логин (если требуется)</label>
+                  <input type="text" class="form-input" id="tgProxyUser" placeholder="Имя пользователя">
+                </div>
+                <div class="form-group">
+                  <label for="tgProxyPass">Пароль (если требуется)</label>
+                  <input type="password" class="form-input" id="tgProxyPass" placeholder="••••••••">
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn-secondary" id="testProxyBtn">
+                  <i data-lucide="shield-check"></i> Проверить прокси
+                </button>
+                <button type="button" class="btn btn-secondary" id="testTgBtn">
+                  <i data-lucide="send"></i> Проверить бота
+                </button>
+              </div>
+              <button type="submit" class="btn btn-primary">
+                <i data-lucide="save"></i> Сохранить Telegram
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- MAX Tab Form -->
+        <div id="maxTab" class="tab-content" style="display:none">
+          <form id="maxForm">
+            <div class="form-group" style="margin-bottom:14px">
+              <label class="form-checkbox-label">
+                <input type="checkbox" id="maxEnabled" checked>
+                <b>Включить оповещения в мессенджер MAX</b>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="maxBotToken">MAX Bot API Token</label>
+              <input type="password" class="form-input" id="maxBotToken" placeholder="Токен бота от @MasterBot" required>
+              <small>Создайте бота в MAX через @MasterBot (/newbot)</small>
+            </div>
+            <div class="form-group">
+              <label for="maxChatId">MAX Chat ID</label>
+              <input type="text" class="form-input" id="maxChatId" placeholder="Числовой ID чата" required>
+              <small>Числовой идентификатор чата в мессенджере MAX</small>
+            </div>
+            <div style="margin-top:16px;display:flex;justify-content:space-between;gap:10px">
+              <button type="button" class="btn btn-secondary" id="testMaxBtn">
+                <i data-lucide="send"></i> Отправить тестовое сообщение
+              </button>
+              <button type="submit" class="btn btn-primary">
+                <i data-lucide="save"></i> Сохранить MAX
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- View: Admin View Panel (Shown on /admin) -->
+      <section class="settings-view-card" id="sectionAdmin" style="display:none">
+        <div style="margin-bottom:16px">
+          <h2 style="font-size:15px;margin:0 0 4px">Администрирование пользователей</h2>
+          <p style="font-size:11px;color:var(--muted);margin:0">Управление учетными записями и разграничение прав доступа.</p>
+        </div>
+
+        <!-- Current User Banner -->
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:36px;height:36px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px" id="admAvatar">A</span>
+            <div>
+              <b id="admUsername" style="font-size:13px">admin</b>
+              <small style="display:block;color:var(--muted);font-size:10px" id="admUserSub">Текущая сессия</small>
+            </div>
+          </div>
+          <span id="admRoleBadge" class="role-badge admin">
+            <i data-lucide="shield-check"></i> Администратор
+          </span>
+        </div>
+
+        <!-- Section for Administrators -->
+        <div id="adminManagementSection">
+          <div style="background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:16px;margin-bottom:16px">
+            <h4 style="margin:0 0 12px;font-size:12px;display:flex;align-items:center;gap:6px">
+              <i data-lucide="user-plus" style="width:14px;color:var(--primary)"></i> Добавить нового пользователя
+            </h4>
+            <div class="alert-box error" id="newUserError" style="margin-bottom:10px"></div>
+            <div class="alert-box success" id="newUserSuccess" style="margin-bottom:10px"></div>
+            <form id="createUserForm">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="newUsername">Логин</label>
+                  <input type="text" class="form-input" id="newUsername" placeholder="например, ivan_viewer" required minlength="3">
+                </div>
+                <div class="form-group">
+                  <label for="newPassword">Пароль</label>
+                  <input type="password" class="form-input" id="newPassword" placeholder="Минимум 6 символов" required minlength="6">
+                </div>
+              </div>
+              <div class="form-row" style="margin-top:10px;align-items:flex-end">
+                <div class="form-group" style="flex:1">
+                  <label for="newUserRole">Роль в системе</label>
+                  <select class="form-select" id="newUserRole">
+                    <option value="viewer" selected>👁️ Наблюдатель (Только просмотр)</option>
+                    <option value="admin">🛡️ Администратор (Полный доступ)</option>
+                  </select>
+                </div>
+                <div>
+                  <button type="submit" class="btn btn-primary" style="height:35px">
+                    <i data-lucide="check"></i> Добавить
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <!-- Existing Users List -->
+          <div>
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:8px">Пользователи системы</label>
+            <div class="user-list" id="usersListContainer">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Section for Viewers -->
+        <div id="viewerInfoSection" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:14px;margin-bottom:16px">
+          <p style="margin:0;font-size:11px;color:var(--muted);line-height:1.5">
+            У вашей учетной записи права <b>«Наблюдатель»</b>. Вы можете отслеживать состояние сервисов и время отклика. Для добавления или изменения мониторов обратитесь к администратору.
+          </p>
+        </div>
+
+        <!-- Logout button -->
+        <div style="border-top:1px solid var(--line);padding-top:14px;margin-top:16px">
+          <button type="button" class="btn btn-danger" id="admLogoutBtn" style="justify-content:center">
+            <i data-lucide="log-out"></i> Выйти из учетной записи
+          </button>
+        </div>
+      </section>
+
+      <!-- View: Settings View Panel (Shown on /settings) -->
+      <section class="settings-view-card" id="sectionSettings" style="display:none">
+        <div style="margin-bottom:16px">
+          <h2 style="font-size:15px;margin:0 0 4px">Параметры Watchtower</h2>
+          <p style="font-size:11px;color:var(--muted);margin:0">Персонализация внешнего вида и частоты обновления данных.</p>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px">
+          <label>Тема оформления</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button type="button" class="btn btn-secondary" id="setThemeDark"><i data-lucide="moon"></i> Тёмная</button>
+            <button type="button" class="btn btn-secondary" id="setThemeLight"><i data-lucide="sun"></i> Светлая</button>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px">
+          <label for="setPollInterval">Интервал автообновления дашборда</label>
+          <select class="form-select" id="setPollInterval" style="max-width:300px;margin-top:4px">
+            <option value="3000">Каждые 3 секунды</option>
+            <option value="6000" selected>Каждые 6 секунд</option>
+            <option value="15000">Каждые 15 секунд</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Системная информация</label>
+          <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);display:grid;gap:4px;max-width:400px;margin-top:4px">
+            <div>Версия: Watchtower v1.0.0</div>
+            <div>Движок: Node.js (TypeScript) + Fastify</div>
+            <div>База данных: SQLite (WAL Mode)</div>
+            <div>Хранилище: /data/watchtower.db</div>
+            <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line);color:var(--text);font-weight:600">Сергей Ерёмин 2026</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Global Floating Action Menu (Decoupled from table to prevent scrollbars) -->
+  <div class="floating-action-menu" id="floatingActionMenu">
+    <button id="famCheckBtn"><i data-lucide="refresh-cw"></i> Проверить сейчас</button>
+    <button id="famPauseBtn"><i data-lucide="pause"></i> <span id="famPauseText">На паузу</span></button>
+    <button id="famEditBtn"><i data-lucide="edit"></i> Изменить</button>
+    <button class="delete-btn" id="famDeleteBtn"><i data-lucide="trash-2"></i> Удалить</button>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">
+    <i data-lucide="check"></i> <span id="toastMsg">Успешно</span>
+  </div>
+
+  <!-- Setup Wizard Modal (First-Run Admin Creation) -->
+  <div class="modal-backdrop" id="setupModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🚀 Первоначальная настройка Watchtower</h3>
+      </div>
+      <form id="setupForm">
+        <div class="modal-body">
+          <p style="margin:0;font-size:11px;color:var(--muted)">
+            Добро пожаловать! Создайте первого администратора для управления мониторами и настройками ботов.
+          </p>
+          <div class="alert-box error" id="setupError"></div>
+          <div class="form-group">
+            <label for="setupUsername">Имя пользователя (Логин)</label>
+            <input type="text" class="form-input" id="setupUsername" placeholder="admin" required minlength="3">
+          </div>
+          <div class="form-group">
+            <label for="setupPassword">Пароль</label>
+            <input type="password" class="form-input" id="setupPassword" placeholder="Минимум 6 символов" required minlength="6">
+          </div>
+          <div class="form-group">
+            <label for="setupPasswordConfirm">Подтверждение пароля</label>
+            <input type="password" class="form-input" id="setupPasswordConfirm" placeholder="Повторите пароль" required minlength="6">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">
+            <i data-lucide="check"></i> Создать администратора
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div class="modal-backdrop" id="loginModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🔐 Вход в панель управления</h3>
+        <button type="button" class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+      </div>
+      <form id="loginForm">
+        <div class="modal-body">
+          <div class="alert-box error" id="loginError"></div>
+          <div class="form-group">
+            <label for="loginUsername">Логин</label>
+            <input type="text" class="form-input" id="loginUsername" placeholder="admin" required>
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">Пароль</label>
+            <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal>Отмена</button>
+          <button type="submit" class="btn btn-primary">
+            <i data-lucide="log-in"></i> Войти
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add/Edit Monitor Modal -->
+  <div class="modal-backdrop" id="monitorModal">
+    <div class="modal" style="max-width: 560px">
+      <div class="modal-header">
+        <h3 id="monitorModalTitle">Добавить монитор</h3>
+        <button type="button" class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+      </div>
+      <form id="monitorForm">
+        <input type="hidden" id="editMonitorId">
+        <div class="modal-body">
+          <div class="alert-box error" id="monitorError"></div>
+
+          <div class="form-group">
+            <label for="monitorName">Название монитора</label>
+            <input type="text" class="form-input" id="monitorName" placeholder="например, Main Website или API Gateway" required>
+          </div>
+
+          <!-- Multi-check options selection (Checkboxes instead of dropdown) -->
+          <div class="form-group">
+            <label>Параметры проверки (выберите нужные типы):</label>
+            <div class="check-options-grid">
+              <label class="check-card checked" id="cardOptHttp">
+                <input type="checkbox" id="checkOptHttp" value="http" checked>
+                <div class="check-card-content">
+                  <b><i data-lucide="globe-2"></i> HTTP / HTTPS</b>
+                  <small>Код ответа 2xx/3xx и время отклика</small>
+                </div>
+              </label>
+
+              <label class="check-card checked" id="cardOptSsl">
+                <input type="checkbox" id="checkOptSsl" value="ssl" checked>
+                <div class="check-card-content">
+                  <b><i data-lucide="shield-check"></i> SSL / TLS</b>
+                  <small>Срок действия и валидность сертификата</small>
+                </div>
+              </label>
+
+              <label class="check-card" id="cardOptPing">
+                <input type="checkbox" id="checkOptPing" value="ping">
+                <div class="check-card-content">
+                  <b><i data-lucide="activity"></i> Ping (ICMP)</b>
+                  <small>Сетевая задержка и доступность</small>
+                </div>
+              </label>
+
+              <label class="check-card" id="cardOptPort">
+                <input type="checkbox" id="checkOptPort" value="port">
+                <div class="check-card-content">
+                  <b><i data-lucide="database"></i> TCP-порт</b>
+                  <small>Проверка открытого порта сервиса</small>
+                </div>
+              </label>
+
+              <label class="check-card" id="cardOptDns">
+                <input type="checkbox" id="checkOptDns" value="dns">
+                <div class="check-card-content">
+                  <b><i data-lucide="network"></i> DNS-запись</b>
+                  <small>Резолвинг домена в IP-адрес</small>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label for="monitorTarget">Адрес (URL или Hostname)</label>
+              <input type="text" class="form-input" id="monitorTarget" placeholder="https://example.com или 192.168.1.1" required>
+            </div>
+            <div class="form-group" id="portGroup" style="display:none;width:120px">
+              <label for="monitorPort">TCP Порт</label>
+              <input type="number" class="form-input" id="monitorPort" placeholder="80, 443, 5432">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="monitorInterval">Интервал проверки (сек)</label>
+              <select class="form-select" id="monitorInterval">
+                <option value="15">15 сек</option>
+                <option value="30">30 сек</option>
+                <option value="60" selected>60 сек (1 мин)</option>
+                <option value="120">2 мин</option>
+                <option value="300">5 мин</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="monitorTimeout">Таймаут (сек)</label>
+              <select class="form-select" id="monitorTimeout">
+                <option value="5000">5 сек</option>
+                <option value="10000" selected>10 сек</option>
+                <option value="20000">20 сек</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" id="sslGroup">
+            <div id="sslDaysRow" style="display:flex;align-items:center;gap:8px">
+              <label for="monitorSSLAlertDays" style="margin:0">Предупреждать об истечении SSL за:</label>
+              <select class="form-select" id="monitorSSLAlertDays" style="width:110px;padding:6px 9px">
+                <option value="7">7 дней</option>
+                <option value="14" selected>14 дней</option>
+                <option value="30">30 дней</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" id="keywordGroup">
+            <label for="monitorKeyword">Поиск ключевого слова в ответе (необязательно)</label>
+            <input type="text" class="form-input" id="monitorKeyword" placeholder="например, Healthy или ok">
+            <small>Если слово не найдено в теле ответа, сервис отметится как сбойный</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal>Отмена</button>
+          <button type="submit" class="btn btn-primary" id="saveMonitorBtn">
+            <i data-lucide="save"></i> Сохранить
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Diagnostic Single Badge Check Modal -->
+  <div class="modal-backdrop" id="diagnosticModal">
+    <div class="modal" style="max-width: 480px">
+      <div class="modal-header">
+        <h3 id="diagModalTitle">🔍 Экспресс-проверка</h3>
+        <button type="button" class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body" id="diagModalBody">
+        <div style="text-align:center;padding:24px 0" id="diagLoadingState">
+          <div style="display:inline-block;animation:spin 1s linear infinite"><i data-lucide="refresh-cw" style="width:28px;height:28px;color:var(--primary)"></i></div>
+          <p style="margin:10px 0 0;font-size:11px;color:var(--muted)">Выполняется запрос к сервису...</p>
+        </div>
+        <div id="diagResultState" style="display:none">
+          <div class="status-banner operational" id="diagBanner">
+            <i data-lucide="check-circle" id="diagBannerIcon" style="width:26px;height:26px"></i>
+            <div>
+              <h4 id="diagBannerTitle">Сервис доступен</h4>
+              <p id="diagBannerSubtitle">Задержка: 45 мс</p>
+            </div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:6px;font-size:11px">
+            <div><b>Монитор:</b> <span id="diagMonitorName">—</span></div>
+            <div><b>Цель (Target):</b> <span id="diagMonitorTarget" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span></div>
+            <div id="diagIpRow" style="display:none"><b>IP адрес источника:</b> <span id="diagIpValue" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span></div>
+            <div><b>Тип проверки:</b> <span id="diagCheckType" class="type-badge">—</span></div>
+            <div id="diagDetailsRow"><b>Детали:</b> <span id="diagDetailsText">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="diagRerunBtn"><i data-lucide="refresh-cw"></i> Проверить повторно</button>
+        <button type="button" class="btn btn-primary" data-close-modal>Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Heartbeat / Tick Detailed Inspection Modal -->
+  <div class="modal-backdrop" id="heartbeatModal">
+    <div class="modal" style="max-width: 480px">
+      <div class="modal-header">
+        <h3 id="hbModalTitle">📊 Результат проверки сервиса</h3>
+        <button type="button" class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="status-banner operational" id="hbBanner">
+          <i data-lucide="check-circle" id="hbBannerIcon" style="width:26px;height:26px"></i>
+          <div>
+            <h4 id="hbBannerTitle">Сервис доступен</h4>
+            <p id="hbBannerSubtitle">Время отклика в норме</p>
+          </div>
+        </div>
+
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:13px 15px;display:grid;gap:8px;font-size:11px">
+          <div style="display:flex;justify-content:space-between">
+            <b style="color:var(--muted)">Монитор:</b>
+            <span id="hbMonitorName" style="font-weight:600">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <b style="color:var(--muted)">Адрес цели (Target):</b>
+            <span id="hbTarget" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <b style="color:var(--muted)">Время проверки:</b>
+            <span id="hbTime" style="font-family:'JetBrains Mono',monospace">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <b style="color:var(--muted)">Задержка отклика:</b>
+            <span id="hbLatency" style="font-weight:700;font-family:'JetBrains Mono',monospace">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between" id="hbStatusCodeRow">
+            <b style="color:var(--muted)">HTTP Код ответа:</b>
+            <span id="hbStatusCode" style="font-family:'JetBrains Mono',monospace">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between" id="hbSslRow">
+            <b style="color:var(--muted)">Сертификат SSL:</b>
+            <span id="hbSslDays">—</span>
+          </div>
+          <div style="border-top:1px solid var(--line);padding-top:8px;margin-top:2px" id="hbReasonRow">
+            <b style="display:block;margin-bottom:5px;color:var(--muted)">Диагностика / Причина статуса:</b>
+            <div id="hbReasonText" style="background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:11px;line-height:1.45;word-break:break-word">
+              —
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-close-modal>Понятно</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modern Confirmation Modal -->
+  <div class="modal-backdrop" id="confirmModal">
+    <div class="modal" style="max-width: 440px">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle" style="display:flex;align-items:center;gap:8px">
+          <i data-lucide="alert-triangle" style="color:var(--red);width:17px;height:17px"></i>
+          <span>Подтверждение удаления</span>
+        </h3>
+        <button type="button" class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="status-banner outage" style="margin-bottom:14px;align-items:flex-start">
+          <i data-lucide="trash-2" style="width:22px;height:22px;color:var(--red);flex-shrink:0;margin-top:2px"></i>
+          <div>
+            <h4 id="confirmBannerTitle" style="color:var(--red);font-size:13px;margin:0 0 2px">Удалить этот монитор?</h4>
+            <p id="confirmBannerSub" style="font-size:11px;color:var(--muted);margin:0">Все накопленные проверки, история аптайма и статистика будут безвозвратно удалены.</p>
+          </div>
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:11px;display:grid;gap:6px" id="confirmDetailsBox">
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:var(--muted)" id="confirmLabel1">Монитор:</span>
+            <b id="confirmVal1" style="color:var(--text)">—</b>
+          </div>
+          <div style="display:flex;justify-content:space-between" id="confirmRow2">
+            <span style="color:var(--muted)" id="confirmLabel2">Адрес цели:</span>
+            <span id="confirmVal2" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="btn btn-secondary" data-close-modal>Отмена</button>
+        <button type="button" class="btn" id="confirmActionBtn" style="background:var(--red);color:#fff;border-color:var(--red);font-weight:600">
+          <i data-lucide="trash-2"></i> <span id="confirmActionBtnText">Удалить</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="app.js"></script>
+</body>
+</html>
