@@ -1297,8 +1297,10 @@
       document.getElementById('diagMonitorName').textContent = monitor.name;
       document.getElementById('diagMonitorTarget').textContent = monitor.target + (monitor.port ? `:${monitor.port}` : '');
       document.getElementById('diagCheckType').textContent = check.type;
-      document.getElementById('diagDetailsText').textContent =
-        check.details || (check.status === 'online' ? 'Проверка успешно завершена' : check.error || 'Ошибка');
+      const diagTextEl = document.getElementById('diagDetailsText');
+      const detailsVal = check.details || (check.status === 'online' ? 'Проверка успешно завершена' : check.error || 'Ошибка');
+      const errForHelp = check.error || (check.status !== 'online' ? detailsVal : '');
+      diagTextEl.innerHTML = escapeHtml(detailsVal) + (errForHelp ? ` ${renderErrorHelpBtn(errForHelp)}` : '');
 
       const ipRow = document.getElementById('diagIpRow');
       const ipVal = document.getElementById('diagIpValue');
@@ -1344,7 +1346,7 @@
       banner.className = 'status-banner outage';
       document.getElementById('diagBannerTitle').textContent = 'Ошибка проверки';
       document.getElementById('diagBannerSubtitle').textContent = err.message;
-      document.getElementById('diagDetailsText').textContent = err.message;
+      document.getElementById('diagDetailsText').innerHTML = escapeHtml(err.message) + ` ${renderErrorHelpBtn(err.message)}`;
       lucide.createIcons();
     }
   };
@@ -1405,13 +1407,13 @@
       bTitle.textContent = 'Сбой проверки (Сервис недоступен)';
       bSub.textContent = hb.error || 'Ошибка подключения или таймаут';
       bIcon.setAttribute('data-lucide', 'alert-octagon');
-      rText.innerHTML = `<span style="color:var(--red);font-weight:600">Ошибка:</span> ${escapeHtml(hb.error || 'Сервис не ответил за установленный таймаут')}`;
+      rText.innerHTML = `<span style="color:var(--red);font-weight:600">Ошибка:</span> ${escapeHtml(hb.error || 'Сервис не ответил за установленный таймаут')} ${renderErrorHelpBtn(hb.error || 'Сервис не ответил за установленный таймаут')}`;
     } else if (hb.status === 'degraded') {
       banner.className = 'status-banner degraded';
       bTitle.textContent = 'Замечена деградация / Предупреждение';
       bSub.textContent = `Задержка: ${hb.latency} мс (превышен нормальный порог отклика)`;
       bIcon.setAttribute('data-lucide', 'alert-triangle');
-      rText.innerHTML = `<span style="color:var(--amber);font-weight:600">Причина:</span> ${escapeHtml(hb.error || `Время ответа составило ${hb.latency} мс, что указывает на высокую задержку сети или сервера`)}`;
+      rText.innerHTML = `<span style="color:var(--amber);font-weight:600">Причина:</span> ${escapeHtml(hb.error || `Время ответа составило ${hb.latency} мс, что указывает на высокую задержку сети или сервера`)} ${renderErrorHelpBtn(hb.error || `Задержка отклика ${hb.latency} мс`)}`;
     } else {
       banner.className = 'status-banner operational';
       bTitle.textContent = 'Сервис полностью доступен (Онлайн)';
@@ -1835,6 +1837,290 @@
   let selectedIncidentMonitorId = '';
   let activeIncidentsTab = 'active';
 
+  // --- Error Explanations Database & Popover Logic ---
+  function getErrorExplanation(rawErr) {
+    if (!rawErr) {
+      return {
+        title: 'Успешная проверка',
+        category: 'Штатная работа',
+        description: 'Ошибок не зафиксировано, целевой сервис отвечает в пределах нормы.',
+        recommendation: 'Действий не требуется.'
+      };
+    }
+
+    const err = String(rawErr).toLowerCase();
+
+    // 1. 504 Gateway Time-out
+    if (err.includes('504') || err.includes('gateway time-out') || err.includes('gateway timeout')) {
+      return {
+        title: 'HTTP 504 Gateway Time-out',
+        category: 'Таймаут шлюза / прокси',
+        description: 'Промежуточный сервер или прокси (Nginx, Traefik, Cloudflare) ждал ответа от основного приложения (бэкенда), но время вышло. Приложение зависло или перегружено.',
+        recommendation: 'Проверьте логи бэкенда (Node.js/Python/Go/PHP), загрузку CPU/RAM и оптимизируйте медленные SQL-запросы к базе данных.'
+      };
+    }
+
+    // 2. 502 Bad Gateway
+    if (err.includes('502') || err.includes('bad gateway')) {
+      return {
+        title: 'HTTP 502 Bad Gateway',
+        category: 'Ошибочный шлюз',
+        description: 'Веб-сервер получил некорректный ответ от внутреннего приложения или процесс приложения упал и разорвал соединение до передачи ответа.',
+        recommendation: 'Проверьте статус службы бэкенда (systemctl status / docker ps). Убедитесь, что приложение не упало из-за нехватки памяти (OOM).'
+      };
+    }
+
+    // 3. 500 Internal Server Error
+    if (err.includes('500') || err.includes('internal server error')) {
+      return {
+        title: 'HTTP 500 Internal Server Error',
+        category: 'Внутренняя ошибка сервера',
+        description: 'Сервер столкнулся с непредвиденным исключением или сбоем в коде приложения при обработке HTTP-запроса.',
+        recommendation: 'Изучите файл журнала ошибок приложения (error.log), проверьте доступность базы данных и переменные окружения.'
+      };
+    }
+
+    // 4. 503 Service Unavailable
+    if (err.includes('503') || err.includes('service unavailable')) {
+      return {
+        title: 'HTTP 503 Service Unavailable',
+        category: 'Сервис временно недоступен',
+        description: 'Сервер временно не готов обработать запрос. Обычно это вызвано перегрузкой пула потоков или проведением регламентных работ.',
+        recommendation: 'Проверьте нагрузку на сервер и лимиты одновременных подключений воркеров веб-сервера.'
+      };
+    }
+
+    // 5. 403 Forbidden
+    if (err.includes('403') || err.includes('forbidden')) {
+      return {
+        title: 'HTTP 403 Forbidden',
+        category: 'Доступ запрещён',
+        description: 'Сервер отклонил запрос. Часто это срабатывание защиты от ботов (Cloudflare, DDoS-Guard, WAF) или блокировка по IP-адресу/User-Agent.',
+        recommendation: 'Проверьте правила файрвола (WAF) и убедитесь, что IP-адрес мониторинга не внесён в чёрный список.'
+      };
+    }
+
+    // 6. 401 Unauthorized
+    if (err.includes('401') || err.includes('unauthorized')) {
+      return {
+        title: 'HTTP 401 Unauthorized',
+        category: 'Требуется авторизация',
+        description: 'Для доступа к этому ресурсу требуются корректные учетные данные (Basic Auth или API-токен).',
+        recommendation: 'Проверьте настройки пути монитора или передачу необходимых заголовков авторизации.'
+      };
+    }
+
+    // 7. 404 Not Found
+    if (err.includes('404') || err.includes('not found')) {
+      return {
+        title: 'HTTP 404 Not Found',
+        category: 'Страница не найдена',
+        description: 'Запрашиваемый адрес или эндпоинт отсутствует на сервере.',
+        recommendation: 'Проверьте правильность URL цели (Target) в настройках монитора.'
+      };
+    }
+
+    // 8. TLS Handshake connection timed out
+    if (err.includes('handshake') || (err.includes('tls') && err.includes('time'))) {
+      return {
+        title: 'Таймаут TLS-рукопожатия',
+        category: 'Задержка защищённого соединения',
+        description: 'Сервер не успел обменяться сертификатами и ключами шифрования за лимит времени из-за сильной задержки сети, потери пакетов или перегрузки CPU сервера. Сам сертификат при этом валиден.',
+        recommendation: 'Проверьте стабильность интернет-канала до сервера и загрузку процессора на целевом хосте.'
+      };
+    }
+
+    // 9. SSL Expired or invalid
+    if (err.includes('ssl') || err.includes('certificate') || err.includes('cert')) {
+      return {
+        title: 'Ошибка SSL-сертификата',
+        category: 'Безопасность HTTPS',
+        description: 'Цифровой сертификат безопасности сайта просрочен, самоподписан или выпущен для другого домена. Браузеры блокируют вход на такой сайт.',
+        recommendation: 'Перевыпустите SSL-сертификат (например, командой certbot renew) и проверьте привязку доменного имени.'
+      };
+    }
+
+    // 10. Request timeout
+    if (err.includes('timeout') || err.includes('timed out')) {
+      return {
+        title: 'Таймаут ожидания ответа',
+        category: 'Сетевой таймаут',
+        description: 'Сервер не прислал ответ за установленное время ожидания. Сервер завис, перегружен либо сетевые пакеты теряются по пути.',
+        recommendation: 'Убедитесь, что сервер не завис, проверьте потребление памяти и сетевые правила файрвола (iptables/ufw).'
+      };
+    }
+
+    // 11. Ping / ICMP failure
+    if (err.includes('ping') || err.includes('icmp')) {
+      return {
+        title: 'Сбой проверки Ping (ICMP)',
+        category: 'Сетевая связность',
+        description: 'Сервер не ответил на сетевой эхо-запрос (ping). Сервер либо выключен, либо перезагружается, либо хостинг заблокировал протокол ICMP.',
+        recommendation: 'Проверьте, включён ли сервер, и разрешены ли входящие ICMP-пакеты (Echo Request) в настройках сетевой защиты.'
+      };
+    }
+
+    // 12. Connection refused (ECONNREFUSED)
+    if (err.includes('refused') || err.includes('econnrefused')) {
+      return {
+        title: 'Соединение отклонено (Port Closed)',
+        category: 'Сетевой порт закрыт',
+        description: 'Сервер доступен в сети, но указанный порт закрыт — ни одна программа сейчас не слушает входящие подключения на этом порту.',
+        recommendation: 'Проверьте, запущена ли служба (Nginx, PostgreSQL, Docker) и слушает ли она внешний адрес 0.0.0.0, а не только 127.0.0.1.'
+      };
+    }
+
+    // 13. DNS lookup failed
+    if (err.includes('dns') || err.includes('enotfound') || err.includes('getaddrinfo')) {
+      return {
+        title: 'Ошибка DNS-разрешения',
+        category: 'Разрешение доменных имён',
+        description: 'Системе не удалось определить IP-адрес по указанному домену. Либо домен не существует, либо сбоит DNS-сервер.',
+        recommendation: 'Проверьте правильность написания домена и настройки DNS (A-записи) у регистратора.'
+      };
+    }
+
+    // 14. Keyword not found
+    if (err.includes('keyword') || err.includes('ключевое слово')) {
+      return {
+        title: 'Ключевое слово не найдено',
+        category: 'Контроль контента',
+        description: 'Страница успешно загрузилась, но на ней отсутствует обязательное слово, заданное в настройках монитора. Возможно, сайт отдал заглушку ошибки.',
+        recommendation: 'Откройте сайт в браузере и проверьте, отображается ли искомый текст в исходном HTML.'
+      };
+    }
+
+    // 15. Latency / Degraded
+    if (err.includes('задержка') || err.includes('замедление') || err.includes('latency')) {
+      return {
+        title: 'Высокая задержка отклика',
+        category: 'Деградация производительности',
+        description: 'Время ответа сервиса существенно превысило норму (> 2000 мс). Сервис работает медленно и может испытывать пиковую нагрузку.',
+        recommendation: 'Проверьте загрузку дисковой подсистемы (iostat), использование памяти и время выполнения тяжелых фоновых задач.'
+      };
+    }
+
+    // Default Fallback
+    return {
+      title: 'Сбой проверки сервиса',
+      category: 'Диагностика',
+      description: `Зафиксирована ошибка: ${rawErr}. Сервис не прошёл проверку параметров доступности.`,
+      recommendation: 'Проверьте доступность целевого адреса вручную и изучите системные логи сервера.'
+    };
+  }
+
+  function escapeAttr(str) {
+    if (!str) return '';
+    return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderErrorHelpBtn(errorText) {
+    if (!errorText) return '';
+    const cleanErr = escapeAttr(String(errorText));
+    return `<button type="button" class="error-help-btn" data-error="${cleanErr}" onclick="window.toggleErrorHelp(event, this)" onmouseenter="window.hoverErrorHelp(event, this)" onmouseleave="window.leaveErrorHelp(event)" title="Что значит эта ошибка? (Нажмите для фиксации)"><i data-lucide="help-circle"></i></button>`;
+  }
+
+  let isErrorHelpPinned = false;
+  let errorHelpHoverTimeout = null;
+
+  function positionErrorHelpPopover(btn) {
+    const popover = document.getElementById('errorHelpPopover');
+    if (!popover || !btn) return;
+
+    const rect = btn.getBoundingClientRect();
+    const popWidth = 350;
+    let left = rect.left - 40;
+    if (left + popWidth > window.innerWidth - 15) {
+      left = window.innerWidth - popWidth - 15;
+    }
+    if (left < 15) left = 15;
+
+    let top = rect.bottom + 8;
+    if (rect.bottom + 260 > window.innerHeight && rect.top > 260) {
+      top = rect.top - 250;
+    }
+
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+  }
+
+  window.showErrorHelpContent = function (errorText, btn, isPinned = false) {
+    clearTimeout(errorHelpHoverTimeout);
+    const popover = document.getElementById('errorHelpPopover');
+    if (!popover) return;
+
+    const info = getErrorExplanation(errorText);
+    document.getElementById('ehTitle').textContent = info.title;
+    document.getElementById('ehCategory').textContent = info.category;
+    document.getElementById('ehDescription').textContent = info.description;
+    document.getElementById('ehRecommendation').textContent = info.recommendation;
+
+    positionErrorHelpPopover(btn);
+    popover.style.display = 'block';
+    isErrorHelpPinned = isPinned;
+
+    const closeBtn = popover.querySelector('.eh-close');
+    if (closeBtn) closeBtn.style.display = isPinned ? 'grid' : 'none';
+    lucide.createIcons();
+  };
+
+  window.hoverErrorHelp = function (e, btn) {
+    if (isErrorHelpPinned) return;
+    const errText = btn.getAttribute('data-error');
+    if (!errText) return;
+    window.showErrorHelpContent(errText, btn, false);
+  };
+
+  window.leaveErrorHelp = function () {
+    if (isErrorHelpPinned) return;
+    errorHelpHoverTimeout = setTimeout(() => {
+      if (!isErrorHelpPinned) {
+        const popover = document.getElementById('errorHelpPopover');
+        if (popover) popover.style.display = 'none';
+      }
+    }, 160);
+  };
+
+  window.toggleErrorHelp = function (e, btn) {
+    if (e) e.stopPropagation();
+    const errText = btn.getAttribute('data-error');
+    if (!errText) return;
+
+    const popover = document.getElementById('errorHelpPopover');
+    if (isErrorHelpPinned && popover && popover.style.display === 'block') {
+      window.closeErrorHelp();
+    } else {
+      window.showErrorHelpContent(errText, btn, true);
+    }
+  };
+
+  window.closeErrorHelp = function () {
+    isErrorHelpPinned = false;
+    const popover = document.getElementById('errorHelpPopover');
+    if (popover) popover.style.display = 'none';
+  };
+
+  // Keep popover open if user hovers directly over the popover content
+  const helpPopoverEl = document.getElementById('errorHelpPopover');
+  helpPopoverEl?.addEventListener('mouseenter', () => {
+    clearTimeout(errorHelpHoverTimeout);
+  });
+  helpPopoverEl?.addEventListener('mouseleave', () => {
+    if (!isErrorHelpPinned) {
+      window.leaveErrorHelp();
+    }
+  });
+
+  // Clicking outside or pressing Escape closes pinned popover
+  document.addEventListener('click', (e) => {
+    if (isErrorHelpPinned) {
+      const popover = document.getElementById('errorHelpPopover');
+      if (popover && !popover.contains(e.target) && !e.target.closest('.error-help-btn')) {
+        window.closeErrorHelp();
+      }
+    }
+  });
+
   function formatIncidentTime(ts) {
     if (!ts) return '—';
     const d = new Date(ts);
@@ -1982,8 +2268,9 @@
                 <div class="incident-row">
                   <span class="incident-dot ${dotClass}"><i data-lucide="${icon}"></i></span>
                   <div style="flex:1">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
                       <b style="font-size:11px">${escapeHtml(inc.monitor_name)}: ${escapeHtml(inc.cause)}</b>
+                      ${renderErrorHelpBtn(inc.cause)}
                       <span class="${isCritical ? '' : 'warn-badge'}">${isCritical ? 'Критический' : 'Деградация'}</span>
                     </div>
                     <p style="margin:0;font-size:10px;color:var(--muted)">
@@ -2019,8 +2306,9 @@
                       <span class="resolved-badge"><i data-lucide="check" style="width:10px;height:10px;vertical-align:-1px"></i> Устранено</span>
                       <span class="duration-badge">Длился: ${formatDuration(inc.duration_seconds)}</span>
                     </div>
-                    <p style="margin:0;font-size:10px;color:var(--text)">
-                      ${escapeHtml(inc.cause)}
+                    <p style="margin:0;font-size:10px;color:var(--text);display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+                      <span>${escapeHtml(inc.cause)}</span>
+                      ${renderErrorHelpBtn(inc.cause)}
                     </p>
                     <p style="margin:4px 0 0;font-size:9px;color:var(--muted)">
                       Начало: ${formatIncidentTime(inc.started_at)} · Восстановлен: ${formatIncidentTime(inc.resolved_at)}
@@ -2060,8 +2348,9 @@
                       </span>
                       <small style="color:var(--muted);font-size:9px;margin-left:auto">${formatIncidentTime(hb.created_at)} (${formatRelativeTime(hb.created_at)})</small>
                     </div>
-                    <p style="margin:0;font-size:10px;color:var(--text)">
-                      ${escapeHtml(hb.error || (hb.latency ? `Задержка отклика ${hb.latency} мс` : 'Сбой'))}
+                    <p style="margin:0;font-size:10px;color:var(--text);display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+                      <span>${escapeHtml(hb.error || (hb.latency ? `Задержка отклика ${hb.latency} мс` : 'Сбой'))}</span>
+                      ${renderErrorHelpBtn(hb.error || (hb.latency ? `Задержка отклика ${hb.latency} мс` : 'Сбой'))}
                     </p>
                     <div style="display:flex;align-items:center;gap:12px;margin-top:4px;font-size:9px;color:var(--muted)">
                       <span>Отклик: <b>${hb.latency || 0} мс</b></span>

@@ -823,6 +823,28 @@
         </button>
       </div>
     </div>
+  <!-- Floating Error Explanation Popover -->
+  <div id="errorHelpPopover" class="error-help-popover" style="display:none">
+    <div class="eh-header">
+      <div class="eh-title-wrap">
+        <span class="eh-icon"><i data-lucide="help-circle"></i></span>
+        <div>
+          <h4 id="ehTitle" class="eh-title">Описание ошибки</h4>
+          <small id="ehCategory" class="eh-category">Диагностика сбоя</small>
+        </div>
+      </div>
+      <button type="button" class="eh-close" onclick="window.closeErrorHelp()" title="Закрыть"><i data-lucide="x"></i></button>
+    </div>
+    <div class="eh-body">
+      <div class="eh-section">
+        <b class="eh-label"><i data-lucide="alert-circle"></i> Что это значит:</b>
+        <p id="ehDescription" class="eh-text"></p>
+      </div>
+      <div class="eh-section eh-rec-section">
+        <b class="eh-label"><i data-lucide="wrench"></i> Что проверить:</b>
+        <p id="ehRecommendation" class="eh-text"></p>
+      </div>
+    </div>
   </div>
 
   <script src="https://unpkg.com/lucide@latest"></script>

@@ -804,6 +804,149 @@ body.route-incidents #sectionBottomGrid {
   font-weight: 700;
 }
 
+/* === Error Help Button & Floating Popover === */
+.error-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--primary);
+  cursor: pointer;
+  padding: 0;
+  vertical-align: middle;
+  margin-left: 6px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.error-help-btn:hover {
+  background: var(--soft);
+  color: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(89, 105, 232, 0.25);
+}
+.error-help-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.error-help-popover {
+  position: fixed;
+  z-index: 100000;
+  width: 350px;
+  max-width: calc(100vw - 28px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  padding: 14px 16px;
+  backdrop-filter: blur(12px);
+  animation: popoverFade 0.15s ease-out;
+  pointer-events: auto;
+}
+@keyframes popoverFade {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.eh-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 11px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.eh-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.eh-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.eh-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.eh-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+.eh-category {
+  font-size: 9px;
+  color: var(--muted);
+  display: block;
+  margin-top: 2px;
+}
+.eh-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+}
+.eh-close:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+.eh-close svg {
+  width: 14px;
+  height: 14px;
+}
+.eh-section {
+  margin-bottom: 10px;
+}
+.eh-section:last-child {
+  margin-bottom: 0;
+}
+.eh-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.eh-label svg {
+  width: 12px;
+  height: 12px;
+  color: var(--primary);
+}
+.eh-text {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.eh-rec-section {
+  background: var(--bg);
+  border-radius: 7px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--primary);
+}
+.eh-rec-section .eh-label svg {
+  color: var(--green);
+}
+
 /* === Auth Gate (Incognito / Unauthenticated Protection) === */
 body.not-authenticated .app {
   display: none !important;
