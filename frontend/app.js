@@ -729,6 +729,23 @@
     }
   });
 
+  // Custom check interval toggle
+  const monitorIntervalSelect = document.getElementById('monitorInterval');
+  const customIntervalWrap = document.getElementById('customIntervalWrap');
+  const customIntervalInput = document.getElementById('monitorCustomInterval');
+
+  monitorIntervalSelect?.addEventListener('change', () => {
+    if (monitorIntervalSelect.value === 'custom') {
+      if (customIntervalWrap) customIntervalWrap.style.display = 'block';
+      if (customIntervalInput) {
+        if (!customIntervalInput.value) customIntervalInput.value = '60';
+        customIntervalInput.focus();
+      }
+    } else {
+      if (customIntervalWrap) customIntervalWrap.style.display = 'none';
+    }
+  });
+
   // Add Monitor Button Handler
   document.getElementById('addMonitor')?.addEventListener('click', () => {
     if (!authState.authenticated) {
@@ -739,6 +756,15 @@
     document.getElementById('monitorForm').reset();
     document.getElementById('editMonitorId').value = '';
     document.getElementById('monitorModalTitle').textContent = 'Добавить монитор';
+
+    // Reset operator field
+    const opInput = document.getElementById('monitorOperator');
+    if (opInput) opInput.value = '';
+
+    // Reset interval selection and custom input
+    if (monitorIntervalSelect) monitorIntervalSelect.value = '60';
+    if (customIntervalWrap) customIntervalWrap.style.display = 'none';
+    if (customIntervalInput) customIntervalInput.value = '';
 
     // Defaults: HTTP + SSL checked
     document.getElementById('checkOptHttp').checked = true;
@@ -777,9 +803,10 @@
     e.preventDefault();
     const id = document.getElementById('editMonitorId').value;
     const name = document.getElementById('monitorName').value.trim();
+    const operator = document.getElementById('monitorOperator')?.value.trim() || '';
     const target = document.getElementById('monitorTarget').value.trim();
     const port = document.getElementById('monitorPort').value;
-    const interval = document.getElementById('monitorInterval').value;
+    const rawInterval = document.getElementById('monitorInterval').value;
     const timeout = document.getElementById('monitorTimeout').value;
     const sslAlertDays = document.getElementById('monitorSSLAlertDays').value;
     const keyword = document.getElementById('monitorKeyword').value.trim();
@@ -790,6 +817,19 @@
     const httpHeaders = document.getElementById('monitorHttpHeaders')?.value.trim() || '';
     const httpBody = document.getElementById('monitorHttpBody')?.value.trim() || '';
     const errBox = document.getElementById('monitorError');
+
+    let interval = parseInt(rawInterval, 10);
+    if (rawInterval === 'custom') {
+      const customVal = parseInt(document.getElementById('monitorCustomInterval')?.value, 10);
+      if (isNaN(customVal) || customVal < 5) {
+        errBox.textContent = 'Укажите корректный интервал проверки (число секунд, минимум 5)';
+        errBox.style.display = 'block';
+        return;
+      }
+      interval = customVal;
+    } else if (isNaN(interval) || interval < 5) {
+      interval = 60;
+    }
 
     // Collect selected check types
     const selectedTypes = [];
@@ -808,10 +848,11 @@
     const hasSsl = selectedTypes.includes('ssl');
     const payload = {
       name,
+      operator: operator || null,
       type: selectedTypes.join(','),
       target,
       port: port ? parseInt(port, 10) : null,
-      interval: parseInt(interval, 10),
+      interval,
       timeout: parseInt(timeout, 10),
       retry_count: parseInt(retryCount, 10) || 2,
       check_ssl: hasSsl ? 1 : 0,
@@ -833,7 +874,7 @@
         showToast('Монитор добавлен и запущен');
       }
       closeModal(monitorModal);
-      await loadMonitors();
+      await loadMonitors(true);
       await loadStats();
     } catch (err) {
       errBox.textContent = err.message;
@@ -1123,9 +1164,27 @@
 
     document.getElementById('editMonitorId').value = monitor.id;
     document.getElementById('monitorName').value = monitor.name;
+    const opInput = document.getElementById('monitorOperator');
+    if (opInput) opInput.value = monitor.operator || '';
     document.getElementById('monitorTarget').value = monitor.target;
     document.getElementById('monitorPort').value = monitor.port || '';
-    document.getElementById('monitorInterval').value = monitor.interval;
+
+    const intervalSelect = document.getElementById('monitorInterval');
+    const customWrap = document.getElementById('customIntervalWrap');
+    const customInput = document.getElementById('monitorCustomInterval');
+    const standardIntervals = ['15', '30', '60', '120', '300'];
+    const currentIntervalStr = String(monitor.interval || 60);
+
+    if (standardIntervals.includes(currentIntervalStr)) {
+      if (intervalSelect) intervalSelect.value = currentIntervalStr;
+      if (customWrap) customWrap.style.display = 'none';
+      if (customInput) customInput.value = '';
+    } else {
+      if (intervalSelect) intervalSelect.value = 'custom';
+      if (customWrap) customWrap.style.display = 'block';
+      if (customInput) customInput.value = currentIntervalStr;
+    }
+
     document.getElementById('monitorTimeout').value = monitor.timeout;
     document.getElementById('monitorSSLAlertDays').value = monitor.ssl_alert_days || 14;
     document.getElementById('monitorKeyword').value = monitor.keyword || '';
@@ -1755,11 +1814,11 @@
   });
 
   // --- Rendering Monitors Table ---
-  async function loadMonitors() {
+  async function loadMonitors(forceRebuild = false) {
     try {
       const res = await api('/monitors');
       monitorsList = res.monitors || [];
-      renderMonitorsTable();
+      renderMonitorsTable(forceRebuild);
       updateGroupCounts();
     } catch (err) {
       console.error('Error fetching monitors:', err);
@@ -1828,6 +1887,16 @@
       const check = res.result;
       document.getElementById('diagMonitorName').textContent = monitor.name;
       document.getElementById('diagMonitorTarget').textContent = monitor.target + (monitor.port ? `:${monitor.port}` : '');
+      const diagOpRow = document.getElementById('diagOperatorRow');
+      const diagOpVal = document.getElementById('diagOperatorValue');
+      if (diagOpRow && diagOpVal) {
+        if (monitor.operator) {
+          diagOpVal.textContent = monitor.operator;
+          diagOpRow.style.display = 'block';
+        } else {
+          diagOpRow.style.display = 'none';
+        }
+      }
       document.getElementById('diagCheckType').textContent = check.type;
       const diagTextEl = document.getElementById('diagDetailsText');
       const detailsVal = check.details || (check.status === 'online' ? 'Проверка успешно завершена' : check.error || 'Ошибка');
@@ -2069,7 +2138,11 @@
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((m) => m.name.toLowerCase().includes(q) || m.target.toLowerCase().includes(q));
+      filtered = filtered.filter((m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.target.toLowerCase().includes(q) ||
+        (m.operator && m.operator.toLowerCase().includes(q))
+      );
     }
 
     if (filtered.length === 0) {
@@ -2130,6 +2203,17 @@
 
           if (m.keyword) {
             checkBadges += `<span class="type-badge clickable auth-badge" onclick="window.runBadgeCheck(event, '${m.id}', 'auth')" title="Сквозная проверка цепочки авторизации (поиск формы/страницы)"><i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-1px"></i> AUTH</span>`;
+          }
+
+          // Operator tag
+          let operatorHtml = '';
+          if (m.operator) {
+            operatorHtml = `
+              <div class="monitor-operator-tag" title="Ответственные: ${escapeHtml(m.operator)}">
+                <i data-lucide="user"></i>
+                <span>${escapeHtml(m.operator)}</span>
+              </div>
+            `;
           }
 
           // Visual Auth Monitoring Chain Tag
@@ -2216,6 +2300,7 @@
                       ${checkBadges}
                     </div>
                     <small>${escapeHtml(m.target)}${m.port ? `:${m.port}` : ''}</small>
+                    ${operatorHtml}
                     ${authChainHtml}
                     ${sslTag}
                   </div>

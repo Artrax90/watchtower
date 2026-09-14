@@ -41,7 +41,7 @@ async function checkDueMonitors() {
   for (const monitor of monitors) {
     if (runningChecks.has(monitor.id)) continue;
 
-    const intervalMs = Math.max(10, monitor.interval) * 1000;
+    const intervalMs = Math.max(5, monitor.interval) * 1000;
     const isDue = now - monitor.last_checked_at >= intervalMs;
 
     if (isDue || monitor.last_checked_at === 0) {
@@ -112,7 +112,8 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
             monitorName: monitor.name,
             monitorTarget: monitor.target,
             type: 'DOWN',
-            error: result.error || 'Service unreachable'
+            error: result.error || 'Service unreachable',
+            operator: monitor.operator || undefined
           });
         }
       }
@@ -147,7 +148,8 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
               monitorName: monitor.name,
               monitorTarget: monitor.target,
               type: 'SSL_EXPIRED',
-              error: result.ssl.error || 'Certificate validity expired'
+              error: result.ssl.error || 'Certificate validity expired',
+              operator: monitor.operator || undefined
             });
           }
         } else if (result.ssl.daysRemaining <= monitor.ssl_alert_days) {
@@ -159,7 +161,8 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
               monitorTarget: monitor.target,
               type: 'SSL_EXPIRING',
               sslDaysRemaining: result.ssl.daysRemaining,
-              sslExpiryDate: result.ssl.expiryDate
+              sslExpiryDate: result.ssl.expiryDate,
+              operator: monitor.operator || undefined
             });
           }
         }
@@ -201,6 +204,7 @@ function resolveIncidentAndNotify(monitor: MonitorRow, now: number, latency?: nu
     monitorTarget: monitor.target,
     type: 'UP',
     latency,
-    downtimeDuration: downtimeFormatted
+    downtimeDuration: downtimeFormatted,
+    operator: monitor.operator || undefined
   });
 }

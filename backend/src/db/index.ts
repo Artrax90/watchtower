@@ -64,6 +64,7 @@ export function initDatabase() {
       ssl_issuer TEXT,
       ssl_expiry_date TEXT,
       is_paused INTEGER NOT NULL DEFAULT 0,
+      operator TEXT,
       created_at INTEGER NOT NULL
     );
 
@@ -126,6 +127,9 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE monitors ADD COLUMN follow_redirects INTEGER DEFAULT 1;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE monitors ADD COLUMN operator TEXT;`);
+  } catch {}
 }
 
 export interface MonitorRow {
@@ -154,6 +158,7 @@ export interface MonitorRow {
   http_body?: string | null;
   expected_status?: string | null;
   follow_redirects?: number | null;
+  operator?: string | null;
   created_at: number;
 }
 
@@ -266,14 +271,14 @@ export const dbQueries = {
         last_checked_at, last_status_change, consecutive_failures,
         ssl_days_remaining, ssl_issuer, ssl_expiry_date, is_paused,
         http_method, http_headers, http_body, expected_status, follow_redirects,
-        created_at
+        operator, created_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?
+        ?, ?
       )
     `).run(
       m.id,
@@ -301,6 +306,7 @@ export const dbQueries = {
       m.http_body ?? null,
       m.expected_status ?? null,
       m.follow_redirects ?? 1,
+      m.operator ?? null,
       m.created_at || Date.now()
     );
   },
@@ -325,14 +331,15 @@ export const dbQueries = {
         http_headers = ?,
         http_body = ?,
         expected_status = ?,
-        follow_redirects = ?
+        follow_redirects = ?,
+        operator = ?
       WHERE id = ?
     `).run(
       (m.name ?? existing.name),
       (m.type ?? existing.type),
       (m.target ?? existing.target),
       (m.port !== undefined ? m.port : existing.port) ?? null,
-      (m.interval ?? existing.interval),
+      (m.interval !== undefined ? Math.max(5, Number(m.interval) || 60) : existing.interval),
       (m.timeout ?? existing.timeout),
       (m.retry_count ?? existing.retry_count),
       (m.keyword !== undefined ? m.keyword : existing.keyword) ?? null,
@@ -344,6 +351,7 @@ export const dbQueries = {
       (m.http_body !== undefined ? m.http_body : existing.http_body) ?? null,
       (m.expected_status !== undefined ? m.expected_status : existing.expected_status) ?? null,
       (m.follow_redirects !== undefined ? m.follow_redirects : existing.follow_redirects) ?? 1,
+      (m.operator !== undefined ? (m.operator ? m.operator.trim() : null) : existing.operator) ?? null,
       id
     );
   },

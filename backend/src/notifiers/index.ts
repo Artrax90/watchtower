@@ -15,6 +15,7 @@ export interface AlertContext {
   downtimeDuration?: string;
   sslDaysRemaining?: number | null;
   sslExpiryDate?: string | null;
+  operator?: string;
 }
 
 function escapeHtml(str: string): string {
@@ -26,6 +27,7 @@ function formatAlertMessage(ctx: AlertContext, isHtml = true): string {
   const timeStr = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
   const bold = (s: string) => (isHtml ? `<b>${s}</b>` : `*${s}*`);
   const code = (s: string) => (isHtml ? `<code>${s}</code>` : `\`${s}\``);
+  const operatorRow = ctx.operator ? `👤 Ответственные: ${bold(escapeHtml(ctx.operator))}` : '';
 
   switch (ctx.type) {
     case 'DOWN':
@@ -34,12 +36,13 @@ function formatAlertMessage(ctx: AlertContext, isHtml = true): string {
         '',
         `📍 Сервис: ${bold(escapeHtml(ctx.monitorName))}`,
         `🔗 Адрес: ${code(escapeHtml(ctx.monitorTarget))}`,
+        operatorRow,
         `⏱ Время: <code>${timeStr}</code>`,
         '',
         isHtml
           ? `<blockquote expandable>⚠️ <b>Диагностика сбоя:</b>\n<code>${escapeHtml(ctx.error || 'Неизвестная ошибка подключения')}</code></blockquote>`
           : `⚠️ Ошибка: ${code(ctx.error || 'Неизвестная ошибка')}`
-      ].join('\n');
+      ].filter(Boolean).join('\n');
 
     case 'UP':
       return [
@@ -47,6 +50,7 @@ function formatAlertMessage(ctx: AlertContext, isHtml = true): string {
         '',
         `📍 Сервис: ${bold(escapeHtml(ctx.monitorName))}`,
         `🔗 Адрес: ${code(escapeHtml(ctx.monitorTarget))}`,
+        operatorRow,
         ctx.downtimeDuration ? `⌛ Время простоя: ${bold(ctx.downtimeDuration)}` : '',
         ctx.latency !== undefined ? `⚡ Задержка: ${bold(`${ctx.latency} мс`)}` : '',
         `⏱ Время: <code>${timeStr}</code>`
@@ -58,6 +62,7 @@ function formatAlertMessage(ctx: AlertContext, isHtml = true): string {
         '',
         `📍 Сервис: ${bold(escapeHtml(ctx.monitorName))}`,
         `🔗 Адрес: ${code(escapeHtml(ctx.monitorTarget))}`,
+        operatorRow,
         ctx.latency ? `⚡ Задержка отклика: ${bold(`${ctx.latency} мс`)}` : '',
         `⏱ Время: <code>${timeStr}</code>`,
         '',
@@ -74,6 +79,7 @@ function formatAlertMessage(ctx: AlertContext, isHtml = true): string {
         '',
         `📍 Сервис: ${bold(escapeHtml(ctx.monitorName))}`,
         `🔗 Адрес: ${code(escapeHtml(ctx.monitorTarget))}`,
+        operatorRow,
         `⏳ Осталось дней: ${bold(`${ctx.sslDaysRemaining}`)}`,
         ctx.sslExpiryDate ? `📅 Дата окончания: ${code(ctx.sslExpiryDate)}` : '',
         `⏱ Время: <code>${timeStr}</code>`
@@ -85,6 +91,7 @@ function formatAlertMessage(ctx: AlertContext, isHtml = true): string {
         '',
         `📍 Сервис: ${bold(escapeHtml(ctx.monitorName))}`,
         `🔗 Адрес: ${code(escapeHtml(ctx.monitorTarget))}`,
+        operatorRow,
         `⏱ Время: <code>${timeStr}</code>`,
         '',
         isHtml

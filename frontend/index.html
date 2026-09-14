@@ -627,6 +627,12 @@
             <input type="text" class="form-input" id="monitorName" placeholder="например, Main Website или API Gateway" required>
           </div>
 
+          <div class="form-group">
+            <label for="monitorOperator">Ответственные за ресурс (необязательно)</label>
+            <input type="text" class="form-input" id="monitorOperator" placeholder="например, Иванов Иван, Петров Петр или отдел DevOps">
+            <small>Укажите имена специалистов или контакты команды, отвечающих за работу данного сервиса</small>
+          </div>
+
           <!-- Multi-check options selection (Checkboxes instead of dropdown) -->
           <div class="form-group">
             <label>Параметры проверки (выберите нужные типы):</label>
@@ -685,17 +691,25 @@
           </div>
 
           <div class="form-row">
-            <div class="form-group">
-              <label for="monitorInterval">Интервал проверки (сек)</label>
+            <div class="form-group" style="flex:1">
+              <label for="monitorInterval">Интервал проверки</label>
               <select class="form-select" id="monitorInterval">
                 <option value="15">15 сек</option>
                 <option value="30">30 сек</option>
                 <option value="60" selected>60 сек (1 мин)</option>
                 <option value="120">2 мин</option>
                 <option value="300">5 мин</option>
+                <option value="custom">Свой интервал...</option>
               </select>
+              <div id="customIntervalWrap" style="display:none;margin-top:6px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <input type="number" class="form-input" id="monitorCustomInterval" placeholder="Например: 45, 90, 600" min="5" style="flex:1">
+                  <span style="font-size:11px;color:var(--muted)">сек</span>
+                </div>
+                <small style="color:var(--muted);font-size:9.5px">Минимальный интервал — 5 секунд</small>
+              </div>
             </div>
-            <div class="form-group">
+            <div class="form-group" style="flex:1">
               <label for="monitorTimeout">Таймаут (сек)</label>
               <select class="form-select" id="monitorTimeout">
                 <option value="5000">5 сек</option>
@@ -835,6 +849,7 @@
           <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;display:grid;gap:5px;font-size:11px">
             <div><b>Монитор:</b> <span id="diagMonitorName">—</span></div>
             <div><b>Цель (Target):</b> <span id="diagMonitorTarget" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span></div>
+            <div id="diagOperatorRow" style="display:none"><b>Ответственные:</b> <span id="diagOperatorValue" style="color:var(--text);font-weight:600">—</span></div>
             <div id="diagIpRow" style="display:none"><b>IP адрес источника:</b> <span id="diagIpValue" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span></div>
             <div><b>Тип проверки:</b> <span id="diagCheckType" class="type-badge">—</span></div>
             <div id="diagDetailsRow"><b>Детали:</b> <span id="diagDetailsText">—</span></div>

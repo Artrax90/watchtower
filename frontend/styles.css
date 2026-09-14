@@ -997,6 +997,27 @@ tbody tr:hover {
 }
 
 /* === End-to-End Auth & Check Pipeline Styles === */
+.monitor-operator-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  width: fit-content;
+  max-width: 100%;
+}
+.monitor-operator-tag svg {
+  width: 11px;
+  height: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.monitor-operator-tag span {
+  color: var(--text);
+  opacity: 0.85;
+}
+
 .monitor-chain-tag {
   display: inline-flex;
   align-items: center;

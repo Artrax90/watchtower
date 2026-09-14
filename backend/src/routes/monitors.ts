@@ -65,6 +65,7 @@ export async function monitorRoutes(fastify: FastifyInstance) {
       http_body?: string;
       expected_status?: string;
       follow_redirects?: number;
+      operator?: string;
     };
   }>(
     '/',
@@ -85,7 +86,8 @@ export async function monitorRoutes(fastify: FastifyInstance) {
         http_headers,
         http_body,
         expected_status,
-        follow_redirects
+        follow_redirects,
+        operator
       } = req.body || {};
 
       if (!name || !name.trim()) {
@@ -102,7 +104,7 @@ export async function monitorRoutes(fastify: FastifyInstance) {
         type: (type || 'http').toLowerCase(),
         target: target.trim(),
         port: port ? Number(port) : null,
-        interval: Math.max(10, Number(interval) || 60),
+        interval: Math.max(5, Number(interval) || 60),
         timeout: Math.max(1000, Number(timeout) || 10000),
         retry_count: Math.max(2, Number(retry_count) || 2),
         keyword: keyword?.trim() || null,
@@ -112,7 +114,8 @@ export async function monitorRoutes(fastify: FastifyInstance) {
         http_headers: http_headers || null,
         http_body: http_body || null,
         expected_status: expected_status?.trim() || null,
-        follow_redirects: follow_redirects !== undefined ? Number(follow_redirects) : 1
+        follow_redirects: follow_redirects !== undefined ? Number(follow_redirects) : 1,
+        operator: operator?.trim() || null
       });
 
       const created = dbQueries.getMonitorById(id)!;
