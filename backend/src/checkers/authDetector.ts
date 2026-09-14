@@ -30,6 +30,7 @@ export interface DetectAuthResult {
     detectedStatus?: number;
     errorSample?: string;
     redirectUrl?: string;
+    authGatewayUrl?: string;
     ssoRealm?: string;
     ssoDomain?: string;
     ssoLoginUrl?: string;
@@ -165,23 +166,39 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         lowerLoc.includes('id.');
 
       if (isAuthRedirect) {
+        let destTitle = '';
+        try {
+          const destRes = await fetch(resolvedRedirect, {
+            headers: { 'User-Agent': BROWSER_USER_AGENT },
+            signal: AbortSignal.timeout(3500)
+          });
+          if (destRes.ok) {
+            const destHtml = await destRes.text();
+            const tMatch = destHtml.match(/<title>([^<]+)<\/title>/i);
+            if (tMatch && tMatch[1]) destTitle = tMatch[1].trim();
+          }
+        } catch {}
+
         const redirectUrlObj = new URL(resolvedRedirect);
-        const keywordGuess = redirectUrlObj.hostname !== new URL(targetUrl).hostname
+        const keywordGuess = destTitle || (redirectUrlObj.hostname !== new URL(targetUrl).hostname
           ? redirectUrlObj.hostname
-          : redirectUrlObj.pathname;
+          : 'login');
 
         return {
           success: true,
           strategy: 'redirect_flow',
-          targetUrl: resolvedRedirect,
+          targetUrl, // Keep user's input portal URL as primary target
           httpMethod: 'GET',
-          expectedStatus: `${initialRes.status}`,
-          followRedirects: 0,
+          expectedStatus: '200',
+          followRedirects: 1,
           keyword: keywordGuess,
-          summary: `Обнаружен редирект (HTTP ${initialRes.status}) на шлюз авторизации: ${resolvedRedirect}`,
+          summary: `Обнаружен редирект с портала на страницу авторизации: ${resolvedRedirect}. ` +
+                   `Мониторинг настроен на исходный адрес (${targetUrl}) со следованием редиректам (код 200).`,
           details: {
+            authGatewayUrl: resolvedRedirect,
             redirectUrl: resolvedRedirect,
-            detectedStatus: initialRes.status
+            detectedStatus: initialRes.status,
+            portalTitle: destTitle
           }
         };
       }
@@ -540,13 +557,13 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       return {
         success: true,
         strategy: 'sso_gateway',
-        targetUrl: ssoLoginUrl,
+        targetUrl,
         httpMethod: 'GET',
         expectedStatus: '200',
         keyword: chosenKeyword,
         followRedirects: 1,
         summary: `Обнаружен шлюз авторизации Keycloak SSO: ${realmUrl} (клиент: «${clientId}»). ` +
-                 `Проверка настроена автоматически.`,
+                 `Мониторинг настроен на адрес портала (${targetUrl}).`,
         details: {
           ssoRealm: realm,
           ssoDomain: domain,
@@ -651,14 +668,13 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
           return {
             success: true,
             strategy: 'sso_gateway',
-            targetUrl: ssoLoginUrl,
+            targetUrl,
             httpMethod: 'GET',
             expectedStatus: '200',
             keyword: chosenKeyword,
             followRedirects: 1,
             summary: `Обнаружен клиентский редирект (SPA) на шлюз авторизации Keycloak SSO: ${realmUrl}. ` +
-                     `Страница входа: ${domain} (клиент: «${clientId}»). ` +
-                     `Проверка доступности шлюза настроена автоматически (код 200 + проверка ключевого слова). Логин и пароль не требуются!`,
+                     `Мониторинг настроен на адрес портала (${targetUrl}). Проверка доступности шлюза настроена автоматически.`,
             details: {
               ssoRealm: realm,
               ssoDomain: domain,
@@ -747,13 +763,13 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
               return {
                 success: true,
                 strategy: 'sso_gateway',
-                targetUrl: resolvedLink,
+                targetUrl,
                 httpMethod: 'GET',
                 expectedStatus: '200',
                 keyword: kw,
                 followRedirects: 1,
                 summary: `Обнаружена страница авторизации по ссылке на сайте: ${resolvedLink}. ` +
-                         `Найдена форма входа. Проверка настроена автоматически!`,
+                         `Мониторинг настроен на адрес сайта (${targetUrl}).`,
                 details: {
                   ssoLoginUrl: resolvedLink,
                   detectedStatus: linkRes.status,

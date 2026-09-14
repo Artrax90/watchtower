@@ -618,44 +618,35 @@
         }
 
         const originalInputTarget = targetInput;
-        const finalAuthTarget = (res.strategy === 'sso_gateway' && res.details?.ssoLoginUrl)
-          ? res.details.ssoLoginUrl
-          : (res.targetUrl || targetInput);
+        const authGatewayUrl = res.details?.ssoLoginUrl || res.details?.authGatewayUrl || res.details?.redirectUrl;
+        const realmUrl = res.details?.realmUrl;
 
-        // Automatically update the monitor target to the discovered auth endpoint
-        if (finalAuthTarget && finalAuthTarget !== targetInput) {
-          document.getElementById('monitorTarget').value = finalAuthTarget;
-        }
+        // Keep user's input URL in the monitor target field
+        document.getElementById('monitorTarget').value = originalInputTarget;
 
-        // If target URL was updated or SSO gateway was detected
+        // Inform user about detected auth endpoint and keep original portal URL
         let targetNotice = '';
-        if (finalAuthTarget !== originalInputTarget) {
-          const realmUrl = res.details?.realmUrl;
+        if (authGatewayUrl && authGatewayUrl !== originalInputTarget) {
           targetNotice = `
             <div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(34,197,94,0.3);font-size:11px">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px">
-                <div style="overflow:hidden">
-                  <div style="color:var(--green);font-weight:600">✓ Адрес монитора обновлен на страницу авторизации:</div>
-                  <div style="font-size:10px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">
-                    <code>${escapeHtml(finalAuthTarget)}</code>
-                  </div>
+              <div style="color:var(--text);margin-bottom:6px">
+                🎯 <b>Адрес монитора сохранён:</b> <code>${escapeHtml(originalInputTarget)}</code>
+                <div style="font-size:10px;color:var(--muted);margin-top:3px">
+                  Найдена страница авторизации: <code>${escapeHtml(authGatewayUrl)}</code>
                 </div>
-                <button type="button" class="btn btn-secondary" id="revertTargetBtn" style="padding:3px 8px;font-size:10px;flex-shrink:0">
-                  Вернуть исходный адрес
-                </button>
               </div>
-              ${realmUrl ? `
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px;margin-top:4px">
-                <div style="overflow:hidden">
-                  <div style="color:var(--text);font-weight:600">Альтернатива (Realm API JSON):</div>
-                  <div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">
-                    <code>${escapeHtml(realmUrl)}</code>
-                  </div>
-                </div>
-                <button type="button" class="btn btn-secondary" id="applySsoRealmBtn" style="padding:3px 8px;font-size:10px;flex-shrink:0">
-                  Установить Realm API
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+                <button type="button" class="btn btn-secondary" id="applyAuthDirectBtn" style="padding:3px 8px;font-size:10px">
+                  Заменить адрес монитора на прямую страницу входа
                 </button>
-              </div>` : ''}
+                <button type="button" class="btn btn-secondary" id="revertTargetBtn" style="display:none;padding:3px 8px;font-size:10px">
+                  Вернуть ${escapeHtml(originalInputTarget)}
+                </button>
+                ${realmUrl ? `
+                <button type="button" class="btn btn-secondary" id="applySsoRealmBtn" style="padding:3px 8px;font-size:10px">
+                  Использовать Realm API (JSON)
+                </button>` : ''}
+              </div>
             </div>
           `;
         }
@@ -682,8 +673,21 @@
         `;
         lucide.createIcons();
 
+        document.getElementById('applyAuthDirectBtn')?.addEventListener('click', () => {
+          document.getElementById('monitorTarget').value = authGatewayUrl;
+          const applyBtn = document.getElementById('applyAuthDirectBtn');
+          const revertBtn = document.getElementById('revertTargetBtn');
+          if (applyBtn) applyBtn.style.display = 'none';
+          if (revertBtn) revertBtn.style.display = 'inline-flex';
+          showToast('Адрес монитора заменён на страницу входа');
+        });
+
         document.getElementById('revertTargetBtn')?.addEventListener('click', () => {
           document.getElementById('monitorTarget').value = originalInputTarget;
+          const applyBtn = document.getElementById('applyAuthDirectBtn');
+          const revertBtn = document.getElementById('revertTargetBtn');
+          if (applyBtn) applyBtn.style.display = 'inline-flex';
+          if (revertBtn) revertBtn.style.display = 'none';
           showToast('Восстановлен исходный адрес сайта');
         });
 
