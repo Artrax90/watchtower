@@ -712,7 +712,66 @@
           <div class="form-group" id="keywordGroup">
             <label for="monitorKeyword">Поиск ключевого слова в ответе (необязательно)</label>
             <input type="text" class="form-input" id="monitorKeyword" placeholder="например, Healthy или ok">
-            <small>Если слово не найдено в теле ответа, сервис отметится как сбойный</small>
+            <small>Если слово не найдено в теле ответа (или в заголовке Location при редиректе), сервис отметится как сбойный</small>
+          </div>
+
+          <div class="form-group" id="retryGroup">
+            <label for="monitorRetryCount">Подтверждение сбоя перед алертом</label>
+            <select class="form-select" id="monitorRetryCount">
+              <option value="2" selected>2 проверки подряд (защита от микросбоев)</option>
+              <option value="3">3 проверки подряд</option>
+              <option value="5">5 проверок подряд</option>
+            </select>
+            <small>Алерт и инцидент активируются только при повторении ошибки, исключая случайные мигания сети</small>
+          </div>
+
+          <!-- Advanced HTTP / Synthetic Auth Probe (Collapsible) -->
+          <div class="advanced-http-section" id="advancedHttpSection">
+            <button type="button" class="advanced-toggle-btn" id="advancedHttpToggle">
+              <span style="display:flex;align-items:center;gap:7px">
+                <i data-lucide="sliders" style="width:14px;height:14px;color:var(--primary)"></i>
+                <b>Расширенные параметры HTTP / Проверка авторизации</b>
+              </span>
+              <i data-lucide="chevron-down" id="advancedHttpIcon" class="advanced-toggle-chevron"></i>
+            </button>
+            <div class="advanced-http-body" id="advancedHttpBody" style="display:none">
+              <div class="form-row">
+                <div class="form-group" style="width:120px">
+                  <label for="monitorHttpMethod">HTTP Метод</label>
+                  <select class="form-select" id="monitorHttpMethod">
+                    <option value="GET" selected>GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="HEAD">HEAD</option>
+                    <option value="PATCH">PATCH</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:1">
+                  <label for="monitorExpectedStatus">Ожидаемый код ответа</label>
+                  <input type="text" class="form-input" id="monitorExpectedStatus" placeholder="например, 200, 401 или 200-299">
+                  <small>Для проверки формы логина укажите <code>401</code> (Negative Auth Probe)</small>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-checkbox-label">
+                  <input type="checkbox" id="monitorFollowRedirects" checked>
+                  <b>Следовать перенаправлениям (Follow Redirects)</b>
+                </label>
+                <small style="margin-left:22px;display:block">Отключите, чтобы проверять 302 редирект и адрес в заголовке Location</small>
+              </div>
+
+              <div class="form-group">
+                <label for="monitorHttpHeaders">Пользовательские HTTP заголовки (Headers)</label>
+                <textarea class="form-input" id="monitorHttpHeaders" rows="2" placeholder='{"Authorization": "Bearer token", "X-Custom": "value"}&#10;или Header: Value'></textarea>
+              </div>
+
+              <div class="form-group" style="margin-bottom:4px">
+                <label for="monitorHttpBody">Тело запроса (Body / Payload)</label>
+                <textarea class="form-input" id="monitorHttpBody" rows="2" placeholder='{"username": "healthcheck", "password": "probe-password"}'></textarea>
+                <small>Передаётся в POST/PUT для синтетической проверки формы входа или API</small>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">

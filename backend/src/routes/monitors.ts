@@ -59,12 +59,33 @@ export async function monitorRoutes(fastify: FastifyInstance) {
       keyword?: string;
       check_ssl?: number;
       ssl_alert_days?: number;
+      http_method?: string;
+      http_headers?: string;
+      http_body?: string;
+      expected_status?: string;
+      follow_redirects?: number;
     };
   }>(
     '/',
     { preHandler: requireAdmin },
     async (req, reply) => {
-      const { name, type, target, port, interval, timeout, retry_count, keyword, check_ssl, ssl_alert_days } = req.body || {};
+      const {
+        name,
+        type,
+        target,
+        port,
+        interval,
+        timeout,
+        retry_count,
+        keyword,
+        check_ssl,
+        ssl_alert_days,
+        http_method,
+        http_headers,
+        http_body,
+        expected_status,
+        follow_redirects
+      } = req.body || {};
 
       if (!name || !name.trim()) {
         return reply.status(400).send({ error: 'Monitor name is required' });
@@ -82,10 +103,15 @@ export async function monitorRoutes(fastify: FastifyInstance) {
         port: port ? Number(port) : null,
         interval: Math.max(10, Number(interval) || 60),
         timeout: Math.max(1000, Number(timeout) || 10000),
-        retry_count: Number(retry_count) || 2,
+        retry_count: Math.max(2, Number(retry_count) || 2),
         keyword: keyword?.trim() || null,
         check_ssl: check_ssl !== undefined ? Number(check_ssl) : 1,
-        ssl_alert_days: Number(ssl_alert_days) || 14
+        ssl_alert_days: Number(ssl_alert_days) || 14,
+        http_method: http_method || 'GET',
+        http_headers: http_headers || null,
+        http_body: http_body || null,
+        expected_status: expected_status?.trim() || null,
+        follow_redirects: follow_redirects !== undefined ? Number(follow_redirects) : 1
       });
 
       const created = dbQueries.getMonitorById(id)!;

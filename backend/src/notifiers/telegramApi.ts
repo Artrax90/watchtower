@@ -253,6 +253,53 @@ export async function editMessageText(
   return res;
 }
 
+export async function sendPhoto(
+  token: string,
+  chatId: string | number,
+  photo: string,
+  options?: {
+    caption?: string;
+    parse_mode?: 'HTML' | 'MarkdownV2' | 'Markdown';
+    reply_markup?: TelegramInlineKeyboard;
+  },
+  proxyUrl?: string
+): Promise<TelegramApiResponse<TelegramMessage>> {
+  const parseMode = options?.parse_mode ?? 'HTML';
+  const res = await telegramApiRequest<TelegramMessage>(
+    token,
+    'sendPhoto',
+    {
+      chat_id: chatId,
+      photo,
+      caption: options?.caption,
+      parse_mode: parseMode,
+      reply_markup: options?.reply_markup
+    },
+    proxyUrl
+  );
+
+  if (!res.ok) {
+    console.warn(`[TelegramApi] sendPhoto error: ${res.description}`);
+    if (res.description && res.description.toLowerCase().includes("can't parse entities")) {
+      console.warn('[TelegramApi] Retrying sendPhoto without parse_mode due to entity parsing error...');
+      const fallbackCaption = options?.caption ? options.caption.replace(/<[^>]+>/g, '') : undefined;
+      return telegramApiRequest<TelegramMessage>(
+        token,
+        'sendPhoto',
+        {
+          chat_id: chatId,
+          photo,
+          caption: fallbackCaption,
+          reply_markup: options?.reply_markup
+        },
+        proxyUrl
+      );
+    }
+  }
+
+  return res;
+}
+
 export async function answerCallbackQuery(
   token: string,
   callbackQueryId: string,

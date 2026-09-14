@@ -109,6 +109,23 @@ export function initDatabase() {
       updated_at INTEGER NOT NULL
     );
   `);
+
+  // Migrations for HTTP advanced check & auth verification
+  try {
+    db.exec(`ALTER TABLE monitors ADD COLUMN http_method TEXT DEFAULT 'GET';`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE monitors ADD COLUMN http_headers TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE monitors ADD COLUMN http_body TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE monitors ADD COLUMN expected_status TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE monitors ADD COLUMN follow_redirects INTEGER DEFAULT 1;`);
+  } catch {}
 }
 
 export interface MonitorRow {
@@ -132,6 +149,11 @@ export interface MonitorRow {
   ssl_issuer: string | null;
   ssl_expiry_date: string | null;
   is_paused: number;
+  http_method?: string | null;
+  http_headers?: string | null;
+  http_body?: string | null;
+  expected_status?: string | null;
+  follow_redirects?: number | null;
   created_at: number;
 }
 
@@ -242,12 +264,16 @@ export const dbQueries = {
         id, name, type, target, port, interval, timeout, retry_count,
         keyword, check_ssl, ssl_alert_days, status, current_latency,
         last_checked_at, last_status_change, consecutive_failures,
-        ssl_days_remaining, ssl_issuer, ssl_expiry_date, is_paused, created_at
+        ssl_days_remaining, ssl_issuer, ssl_expiry_date, is_paused,
+        http_method, http_headers, http_body, expected_status, follow_redirects,
+        created_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?
       )
     `).run(
       m.id,
@@ -270,6 +296,11 @@ export const dbQueries = {
       m.ssl_issuer ?? null,
       m.ssl_expiry_date ?? null,
       m.is_paused ?? 0,
+      m.http_method || 'GET',
+      m.http_headers ?? null,
+      m.http_body ?? null,
+      m.expected_status ?? null,
+      m.follow_redirects ?? 1,
       m.created_at || Date.now()
     );
   },
@@ -289,20 +320,30 @@ export const dbQueries = {
         keyword = ?,
         check_ssl = ?,
         ssl_alert_days = ?,
-        is_paused = ?
+        is_paused = ?,
+        http_method = ?,
+        http_headers = ?,
+        http_body = ?,
+        expected_status = ?,
+        follow_redirects = ?
       WHERE id = ?
     `).run(
-      m.name ?? existing.name,
-      m.type ?? existing.type,
-      m.target ?? existing.target,
-      m.port !== undefined ? m.port : existing.port,
-      m.interval ?? existing.interval,
-      m.timeout ?? existing.timeout,
-      m.retry_count ?? existing.retry_count,
-      m.keyword !== undefined ? m.keyword : existing.keyword,
-      m.check_ssl ?? existing.check_ssl,
-      m.ssl_alert_days ?? existing.ssl_alert_days,
-      m.is_paused ?? existing.is_paused,
+      (m.name ?? existing.name),
+      (m.type ?? existing.type),
+      (m.target ?? existing.target),
+      (m.port !== undefined ? m.port : existing.port) ?? null,
+      (m.interval ?? existing.interval),
+      (m.timeout ?? existing.timeout),
+      (m.retry_count ?? existing.retry_count),
+      (m.keyword !== undefined ? m.keyword : existing.keyword) ?? null,
+      (m.check_ssl ?? existing.check_ssl),
+      (m.ssl_alert_days ?? existing.ssl_alert_days),
+      (m.is_paused ?? existing.is_paused),
+      (m.http_method !== undefined ? m.http_method : existing.http_method) ?? 'GET',
+      (m.http_headers !== undefined ? m.http_headers : existing.http_headers) ?? null,
+      (m.http_body !== undefined ? m.http_body : existing.http_body) ?? null,
+      (m.expected_status !== undefined ? m.expected_status : existing.expected_status) ?? null,
+      (m.follow_redirects !== undefined ? m.follow_redirects : existing.follow_redirects) ?? 1,
       id
     );
   },
@@ -401,6 +442,68 @@ export const dbQueries = {
 
     if (!row || !row.total || row.total === 0) return 100;
     return Number(((row.up_count / row.total) * 100).toFixed(2));
+  },
+  getMonitorLatencyHistory: (monitorId?: string, pointsCount = 12) => {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+    const points: { label: string; latency: number }[] = [];
+    const filterSql = monitorId ? 'AND monitor_id = ?' : '';
+
+    for (let i = pointsCount - 1; i >= 0; i--) {
+      const bucketStart = now - (i + 1) * oneHour;
+      const bucketEnd = now - i * oneHour;
+      const date = new Date(bucketEnd);
+      const label = `${String(date.getHours()).padStart(2, '0')}:00`;
+
+      const stmt = db.prepare(`
+        SELECT AVG(latency) as avg_latency
+        FROM heartbeats
+        WHERE created_at >= ? AND created_at < ? AND status != 'down' ${filterSql}
+      `);
+      const row = (monitorId ? stmt.get(bucketStart, bucketEnd, monitorId) : stmt.get(bucketStart, bucketEnd)) as
+        | { avg_latency: number | null }
+        | undefined;
+
+      const latency = row?.avg_latency ? Math.round(row.avg_latency) : 0;
+      points.push({ label, latency });
+    }
+
+    const summaryStmt = db.prepare(`
+      SELECT
+        AVG(latency) as avg_latency,
+        MIN(latency) as min_latency,
+        MAX(latency) as max_latency,
+        COUNT(*) as total_checks,
+        SUM(CASE WHEN status != 'down' THEN 1 ELSE 0 END) as up_checks
+      FROM heartbeats
+      WHERE created_at >= ? ${filterSql}
+    `);
+    const summaryRow = (monitorId
+      ? summaryStmt.get(now - pointsCount * oneHour, monitorId)
+      : summaryStmt.get(now - pointsCount * oneHour)) as
+      | {
+          avg_latency: number | null;
+          min_latency: number | null;
+          max_latency: number | null;
+          total_checks: number;
+          up_checks: number;
+        }
+      | undefined;
+
+    const total = summaryRow?.total_checks || 0;
+    const up = summaryRow?.up_checks || 0;
+    const uptime = total > 0 ? Number(((up / total) * 100).toFixed(1)) : 100.0;
+
+    return {
+      points,
+      avgLatency: summaryRow?.avg_latency ? Math.round(summaryRow.avg_latency) : 0,
+      minLatency: summaryRow?.min_latency ? Math.round(summaryRow.min_latency) : 0,
+      maxLatency: summaryRow?.max_latency ? Math.round(summaryRow.max_latency) : 0,
+      uptime,
+      uptime24h: uptime,
+      totalChecks: total,
+      upChecks: up
+    };
   },
 
   // Incidents

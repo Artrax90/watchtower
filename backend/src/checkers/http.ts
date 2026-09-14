@@ -1,6 +1,33 @@
 import { CheckResult, MonitorCheckTarget } from './types.js';
 import { checkSSL } from './ssl.js';
 
+export function isExpectedStatus(actualCode: number, expectedExpr?: string | null): boolean {
+  if (!expectedExpr || !expectedExpr.trim()) {
+    // Default behavior: 200..399 is considered healthy
+    return actualCode >= 200 && actualCode < 400;
+  }
+  const tokens = expectedExpr.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+  for (const token of tokens) {
+    if (token.includes('-')) {
+      const [startStr, endStr] = token.split('-');
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      if (!isNaN(start) && !isNaN(end) && actualCode >= start && actualCode <= end) {
+        return true;
+      }
+    } else if (token.endsWith('xx')) {
+      const prefix = parseInt(token[0], 10);
+      if (!isNaN(prefix) && Math.floor(actualCode / 100) === prefix) {
+        return true;
+      }
+    } else {
+      const code = parseInt(token, 10);
+      if (actualCode === code) return true;
+    }
+  }
+  return false;
+}
+
 export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult> {
   const startTime = performance.now();
   let url = target.target.trim();
@@ -19,17 +46,51 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
     }
   }
 
+  const method = (target.http_method || 'GET').toUpperCase();
+  const headers: Record<string, string> = {
+    'User-Agent': 'Watchtower-Monitor/1.0 (+https://github.com/watchtower)',
+    'Accept': '*/*'
+  };
+
+  if (target.http_headers) {
+    try {
+      const parsed = JSON.parse(target.http_headers);
+      if (typeof parsed === 'object' && parsed !== null) {
+        Object.assign(headers, parsed);
+      }
+    } catch {
+      target.http_headers.split('\n').forEach((line) => {
+        const idx = line.indexOf(':');
+        if (idx > 0) {
+          const k = line.slice(0, idx).trim();
+          const v = line.slice(idx + 1).trim();
+          if (k && v) headers[k] = v;
+        }
+      });
+    }
+  }
+
+  let body: string | undefined = undefined;
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && target.http_body) {
+    body = target.http_body;
+    const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
+    if (!hasContentType && (body.trim().startsWith('{') || body.trim().startsWith('['))) {
+      headers['Content-Type'] = 'application/json';
+    }
+  }
+
+  const redirectMode = target.follow_redirects === 0 ? 'manual' : 'follow';
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), target.timeout);
 
     const response = await fetch(url, {
+      method,
       signal: controller.signal,
-      headers: {
-        'User-Agent': 'Watchtower-Monitor/1.0 (+https://github.com/watchtower)',
-        'Accept': '*/*'
-      },
-      redirect: 'follow'
+      headers,
+      body,
+      redirect: redirectMode
     });
 
     clearTimeout(timeoutId);
@@ -45,18 +106,24 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
       }
     }
 
-    // Keyword verification
-    if (target.keyword && !bodyText.includes(target.keyword)) {
-      return {
-        status: 'degraded',
-        latency,
-        statusCode,
-        error: `Ключевое слово "${target.keyword}" не найдено в ответе`,
-        ssl: sslResult
-      };
+    // Check keyword in body and Location header (for redirect check)
+    if (target.keyword) {
+      const locationHeader = response.headers.get('location') || '';
+      const matchSource = `${bodyText} Location: ${locationHeader}`;
+      if (!matchSource.toLowerCase().includes(target.keyword.toLowerCase())) {
+        return {
+          status: 'degraded',
+          latency,
+          statusCode,
+          error: `Ожидаемый текст/адрес "${target.keyword}" не найден в ответе/редиректе`,
+          ssl: sslResult
+        };
+      }
     }
 
-    if (statusCode >= 200 && statusCode < 400) {
+    const isOk = isExpectedStatus(statusCode, target.expected_status);
+
+    if (isOk) {
       // Check if SSL is expired or expiring critically
       if (sslResult && !sslResult.valid) {
         const isTimeout = sslResult.error?.toLowerCase().includes('timed out');
@@ -81,11 +148,12 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
         ssl: sslResult
       };
     } else {
+      const expMsg = target.expected_status ? ` (ожидался: ${target.expected_status})` : '';
       return {
         status: 'down',
         latency,
         statusCode,
-        error: `HTTP status ${statusCode} (${response.statusText})`,
+        error: `HTTP статус ${statusCode} ${response.statusText || ''}${expMsg}`.trim(),
         ssl: sslResult
       };
     }

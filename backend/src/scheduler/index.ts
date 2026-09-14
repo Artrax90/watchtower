@@ -69,7 +69,12 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
       timeout: monitor.timeout,
       keyword: monitor.keyword,
       check_ssl: monitor.check_ssl,
-      ssl_alert_days: monitor.ssl_alert_days
+      ssl_alert_days: monitor.ssl_alert_days,
+      http_method: monitor.http_method,
+      http_headers: monitor.http_headers,
+      http_body: monitor.http_body,
+      expected_status: monitor.expected_status,
+      follow_redirects: monitor.follow_redirects
     });
 
     // Record heartbeat
@@ -84,7 +89,8 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
 
     let newStatus = monitor.status;
     let consecutiveFailures = monitor.consecutive_failures;
-    const retryThreshold = Math.max(1, monitor.retry_count);
+    // Enforce at least 2 consecutive failures before firing alert to prevent false alarms on transient glitches
+    const retryThreshold = Math.max(2, Number(monitor.retry_count) || 2);
 
     if (result.status === 'down') {
       consecutiveFailures += 1;

@@ -1314,4 +1314,65 @@ body.not-authenticated #setupModal [data-close-modal] {
   margin-inline: auto;
 }
 
+/* Advanced HTTP / Synthetic Auth Probe Accordion */
+.advanced-http-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 14px;
+  background: var(--bg);
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.advanced-http-section:focus-within {
+  border-color: var(--primary);
+}
+
+.advanced-toggle-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--card);
+  border: none;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+  transition: background 0.15s ease;
+  user-select: none;
+}
+
+.advanced-toggle-btn:hover {
+  background: var(--soft);
+}
+
+.advanced-toggle-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 0.25s ease;
+}
+
+.advanced-toggle-chevron.open {
+  transform: rotate(180deg);
+}
+
+.advanced-http-body {
+  padding: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+}
+
+.advanced-http-body textarea.form-input {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
 

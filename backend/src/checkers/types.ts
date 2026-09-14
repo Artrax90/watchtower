@@ -23,4 +23,9 @@ export interface MonitorCheckTarget {
   keyword?: string | null;
   check_ssl?: number;
   ssl_alert_days?: number;
+  http_method?: string | null;
+  http_headers?: string | null;
+  http_body?: string | null;
+  expected_status?: string | null;
+  follow_redirects?: number | null;
 }

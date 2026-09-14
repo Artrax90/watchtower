@@ -4,6 +4,7 @@ import {
   getUpdates,
   sendMessage,
   editMessageText,
+  sendPhoto,
   answerCallbackQuery,
   setMyCommands,
   deleteWebhook,
@@ -151,6 +152,7 @@ export async function startTelegramBot() {
       [
         { command: 'status', description: '📊 Сводка доступности и Uptime' },
         { command: 'monitors', description: '🖥 Список мониторов и состояние' },
+        { command: 'chart', description: '📈 График задержки и Uptime' },
         { command: 'check', description: '🔍 Экспресс-проверка сервиса' },
         { command: 'pause', description: '⏸ Поставить монитор на паузу (Админ)' },
         { command: 'resume', description: '▶ Возобновить монитор (Админ)' },
@@ -326,6 +328,14 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
     case 'monitors':
     case 'мониторы': {
       await sendMonitorsMessage(chatId, cfg, undefined, role);
+      break;
+    }
+
+    case '/chart':
+    case 'chart':
+    case 'график':
+    case 'графики': {
+      await handleChartCommand(chatId, arg, cfg);
       break;
     }
 
@@ -663,10 +673,24 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
     return;
   }
 
+  // 7.1 View latency chart: chart:<monitorId>
+  if (data.startsWith('chart:')) {
+    const monitorId = data.slice(6);
+    await answerCallbackQuery(cfg.botToken, cbId, { text: '⏳ Загружаем график...' }, cfg.proxyUrl);
+    await sendChartMessage(chatId, monitorId, cfg);
+    return;
+  }
+
   // 8. Navigation menu commands
   if (data === 'cmd:status') {
     await sendStatusMessage(chatId, cfg, msg?.message_id);
     await answerCallbackQuery(cfg.botToken, cbId, { text: 'Сводка обновлена' }, cfg.proxyUrl);
+    return;
+  }
+
+  if (data === 'cmd:chart') {
+    await answerCallbackQuery(cfg.botToken, cbId, { text: '⏳ Загружаем график...' }, cfg.proxyUrl);
+    await sendChartMessage(chatId, 'all', cfg);
     return;
   }
 
@@ -764,6 +788,9 @@ async function sendStatusMessage(chatId: string | number, cfg: ActiveTelegramCon
       [
         { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' },
         { text: '⚠️ Инциденты', callback_data: 'cmd:incidents' }
+      ],
+      [
+        { text: '📈 График задержки', callback_data: 'chart:all' }
       ]
     ]
   };
@@ -856,7 +883,8 @@ async function sendSingleMonitorCard(chatId: string | number, monitorId: string,
 
   const kbRows: TelegramInlineKeyboard['inline_keyboard'] = [
     [
-      { text: '🔄 Проверить сейчас', callback_data: `chk:${m.id}` }
+      { text: '🔄 Проверить сейчас', callback_data: `chk:${m.id}` },
+      { text: '📈 График', callback_data: `chart:${m.id}` }
     ]
   ];
 
@@ -957,6 +985,221 @@ async function handleCheckCommand(chatId: string | number, query: string, cfg: A
       ])
     };
     await sendMessage(cfg.botToken, chatId, `Найдено несколько сервисов. Выберите нужный:`, { reply_markup: kb }, cfg.proxyUrl);
+  }
+}
+
+function generateTextSparkline(values: number[]): string {
+  if (!values || values.length === 0) return '[ нет данных ]';
+  const ticks = [' ', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) {
+    return values.map(() => '▄').join('');
+  }
+  const range = max - min;
+  return values
+    .map((v) => {
+      const idx = Math.min(ticks.length - 1, Math.max(0, Math.floor(((v - min) / range) * (ticks.length - 1))));
+      return ticks[idx];
+    })
+    .join('');
+}
+
+async function sendChartMessage(
+  chatId: string | number,
+  monitorIdOrQuery: string,
+  cfg: ActiveTelegramConfig
+) {
+  const isAll = !monitorIdOrQuery || monitorIdOrQuery === 'all';
+  let targetMonitor: MonitorRow | undefined;
+
+  if (!isAll) {
+    targetMonitor = dbQueries.getMonitorById(monitorIdOrQuery);
+    if (!targetMonitor) {
+      const q = monitorIdOrQuery.toLowerCase();
+      const monitors = dbQueries.getAllMonitors();
+      targetMonitor = monitors.find(
+        (m) => m.name.toLowerCase().includes(q) || m.target.toLowerCase().includes(q)
+      );
+    }
+    if (!targetMonitor) {
+      await sendMessage(
+        cfg.botToken,
+        chatId,
+        `❌ Монитор «${escapeHtml(monitorIdOrQuery)}» не найден.`,
+        {},
+        cfg.proxyUrl
+      );
+      return;
+    }
+  }
+
+  const history = dbQueries.getMonitorLatencyHistory(targetMonitor ? targetMonitor.id : undefined, 12);
+  const title = targetMonitor
+    ? `Монитор «${targetMonitor.name}» (12ч)`
+    : `Сводный график всей инфраструктуры (12ч)`;
+  const targetDesc = targetMonitor
+    ? `${targetMonitor.target}${targetMonitor.port ? `:${targetMonitor.port}` : ''}`
+    : `Все активные сервисы (${history.totalChecks} проверок)`;
+
+  const refreshCb = targetMonitor ? `chart:${targetMonitor.id}` : 'chart:all';
+  const backCb = targetMonitor ? `det:${targetMonitor.id}` : 'cmd:status';
+
+  const kb: TelegramInlineKeyboard = {
+    inline_keyboard: [
+      [
+        { text: '🔄 Обновить график', callback_data: refreshCb },
+        { text: '🔙 Назад', callback_data: backCb }
+      ],
+      [
+        { text: '📊 Статус инфраструктуры', callback_data: 'cmd:status' }
+      ]
+    ]
+  };
+
+  const chartConfig = {
+    type: 'line',
+    data: {
+      labels: history.points.map((p) => p.label),
+      datasets: [
+        {
+          label: 'Задержка (мс)',
+          data: history.points.map((p) => p.latency),
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointBackgroundColor: '#38bdf8',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 1.5
+        }
+      ]
+    },
+    options: {
+      title: {
+        display: true,
+        text: title,
+        fontColor: '#f8fafc',
+        fontSize: 15,
+        fontStyle: 'bold'
+      },
+      legend: {
+        display: false
+      },
+      scales: {
+        xAxes: [
+          {
+            gridLines: { color: 'rgba(255, 255, 255, 0.08)' },
+            ticks: { fontColor: '#94a3b8', fontSize: 10 }
+          }
+        ],
+        yAxes: [
+          {
+            gridLines: { color: 'rgba(255, 255, 255, 0.08)' },
+            ticks: { fontColor: '#94a3b8', fontSize: 10, beginAtZero: true }
+          }
+        ]
+      }
+    }
+  };
+
+  const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&bkg=%230f172a&w=650&h=320&devicePixelRatio=2`;
+
+  const caption = [
+    `📈 <b>${escapeHtml(title)}</b>`,
+    `🔗 <code>${escapeHtml(targetDesc)}</code>`,
+    ``,
+    `⚡ <b>Отклик:</b> средний <b>${history.avgLatency} мс</b> (мин <b>${history.minLatency}</b> / макс <b>${history.maxLatency}</b> мс)`,
+    `📊 <b>Uptime (24 ч):</b> <b>${history.uptime24h}%</b> (Успешно: ${history.upChecks}/${history.totalChecks})`,
+    `⏱ <i>Показана динамика за последние 12 часов с шагом 1 час</i>`
+  ].join('\n');
+
+  try {
+    const photoRes = await sendPhoto(cfg.botToken, chatId, chartUrl, { caption, reply_markup: kb }, cfg.proxyUrl);
+    if (!photoRes.ok) {
+      throw new Error(photoRes.description || 'Не удалось загрузить изображение');
+    }
+  } catch (err: any) {
+    console.warn('[TelegramBot] sendPhoto failed, falling back to text sparkline:', err.message);
+    const sparkline = generateTextSparkline(history.points.map((p) => p.latency));
+    const textFallback = [
+      caption,
+      ``,
+      `📊 <b>Спарклайн отклика:</b>`,
+      `<code>${sparkline}</code>`,
+      `<i>(${history.points.map((p) => `${p.label}: ${p.latency}мс`).join(' | ')})</i>`
+    ].join('\n');
+    await sendMessage(cfg.botToken, chatId, textFallback, { reply_markup: kb }, cfg.proxyUrl);
+  }
+}
+
+async function handleChartCommand(chatId: string | number, query: string, cfg: ActiveTelegramConfig) {
+  const monitors = dbQueries.getAllMonitors();
+  if (monitors.length === 0) {
+    await sendMessage(cfg.botToken, chatId, 'Список мониторов пуст.', {}, cfg.proxyUrl);
+    return;
+  }
+
+  const cleanQ = (query || '').trim().toLowerCase();
+  if (!cleanQ) {
+    // Show keyboard picker
+    const kbRows: TelegramInlineKeyboard['inline_keyboard'] = [
+      [
+        { text: '🌐 Все сервисы (Сводный)', callback_data: 'chart:all' }
+      ]
+    ];
+    for (const m of monitors) {
+      kbRows.push([
+        { text: `📈 ${m.name}`, callback_data: `chart:${m.id}` }
+      ]);
+    }
+    await sendMessage(
+      cfg.botToken,
+      chatId,
+      'Выберите монитор или нажмите «Все сервисы» для просмотра графика задержки:',
+      { reply_markup: { inline_keyboard: kbRows } },
+      cfg.proxyUrl
+    );
+    return;
+  }
+
+  if (cleanQ === 'all' || cleanQ === 'все' || cleanQ === 'сводка') {
+    await sendChartMessage(chatId, 'all', cfg);
+    return;
+  }
+
+  const matched = monitors.filter(
+    (m) => m.name.toLowerCase().includes(cleanQ) || m.target.toLowerCase().includes(cleanQ) || m.id.toLowerCase() === cleanQ
+  );
+
+  if (matched.length === 0) {
+    await sendMessage(
+      cfg.botToken,
+      chatId,
+      `❌ Монитор по запросу «${escapeHtml(query)}» не найден.`,
+      {},
+      cfg.proxyUrl
+    );
+    return;
+  }
+
+  if (matched.length === 1) {
+    await sendChartMessage(chatId, matched[0].id, cfg);
+  } else {
+    const kb: TelegramInlineKeyboard = {
+      inline_keyboard: matched.map((m) => [
+        { text: `📈 ${m.name} (${m.target})`, callback_data: `chart:${m.id}` }
+      ])
+    };
+    await sendMessage(
+      cfg.botToken,
+      chatId,
+      `Найдено несколько сервисов. Выберите нужный:`,
+      { reply_markup: kb },
+      cfg.proxyUrl
+    );
   }
 }
 
@@ -1236,6 +1479,7 @@ export function getHelpText(role: 'admin' | 'viewer' = 'admin'): string {
     `📌 <b>Доступные команды:</b>`,
     `• <b>/status</b> — общая сводка доступности инфраструктуры`,
     `• <b>/monitors</b> — список всех добавленных сервисов`,
+    `• <b>/chart [имя]</b> — интерактивный график задержки и аптайма`,
     `• <b>/check &lt;имя или ID&gt;</b> — мгновенная экспресс-проверка`,
     `• <b>/ssl</b> — статус и сроки истечения SSL-сертификатов`,
     `• <b>/incidents</b> — журнал недавних сбоев и аварий`
@@ -1265,7 +1509,10 @@ export function getHelpKeyboard(role: 'admin' | 'viewer' = 'admin'): TelegramInl
       { text: '🖥 Мониторы', callback_data: 'cmd:monitors' }
     ],
     [
-      { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' },
+      { text: '📈 Графики задержки', callback_data: 'cmd:chart' },
+      { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' }
+    ],
+    [
       { text: '⚠️ Инциденты', callback_data: 'cmd:incidents' }
     ]
   ];
@@ -1321,6 +1568,7 @@ export async function sendWelcomeToUsers(userIds: string[], rawConfig: any): Pro
       `• 🔄 Интерактивные кнопки перепроверки сервисов`,
       `• 📊 <b>/status</b> — общая сводка доступности и Uptime`,
       `• 🖥 <b>/monitors</b> — список сервисов`,
+      `• 📈 <b>/chart [имя]</b> — интерактивные графики задержки`,
       `• 🔍 <b>/check &lt;url/имя&gt;</b> — мгновенная экспресс-проверка`,
       `• 🔒 <b>/ssl</b> — статус SSL-сертификатов`,
       `• ⚠️ <b>/incidents</b> — список инцидентов`

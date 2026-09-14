@@ -538,6 +538,21 @@
     document.getElementById(id)?.addEventListener('change', updateCheckCardStates);
   });
 
+  // Advanced HTTP Accordion Toggle
+  const advancedHttpToggle = document.getElementById('advancedHttpToggle');
+  const advancedHttpBody = document.getElementById('advancedHttpBody');
+  const advancedHttpIcon = document.getElementById('advancedHttpIcon');
+
+  advancedHttpToggle?.addEventListener('click', () => {
+    const isHidden = advancedHttpBody.style.display === 'none' || !advancedHttpBody.style.display;
+    advancedHttpBody.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden) {
+      advancedHttpIcon?.classList.add('open');
+    } else {
+      advancedHttpIcon?.classList.remove('open');
+    }
+  });
+
   // Add Monitor Button Handler
   document.getElementById('addMonitor')?.addEventListener('click', () => {
     if (!authState.authenticated) {
@@ -557,6 +572,23 @@
     document.getElementById('checkOptDns').checked = false;
     updateCheckCardStates();
 
+    // Reset Advanced & Retry inputs
+    const retryInput = document.getElementById('monitorRetryCount');
+    if (retryInput) retryInput.value = '2';
+    const methodInput = document.getElementById('monitorHttpMethod');
+    if (methodInput) methodInput.value = 'GET';
+    const expectedStatusInput = document.getElementById('monitorExpectedStatus');
+    if (expectedStatusInput) expectedStatusInput.value = '';
+    const followRedirInput = document.getElementById('monitorFollowRedirects');
+    if (followRedirInput) followRedirInput.checked = true;
+    const headersInput = document.getElementById('monitorHttpHeaders');
+    if (headersInput) headersInput.value = '';
+    const bodyInput = document.getElementById('monitorHttpBody');
+    if (bodyInput) bodyInput.value = '';
+
+    if (advancedHttpBody) advancedHttpBody.style.display = 'none';
+    if (advancedHttpIcon) advancedHttpIcon.classList.remove('open');
+
     openModal(monitorModal);
   });
 
@@ -571,6 +603,12 @@
     const timeout = document.getElementById('monitorTimeout').value;
     const sslAlertDays = document.getElementById('monitorSSLAlertDays').value;
     const keyword = document.getElementById('monitorKeyword').value.trim();
+    const retryCount = document.getElementById('monitorRetryCount')?.value || '2';
+    const httpMethod = document.getElementById('monitorHttpMethod')?.value || 'GET';
+    const expectedStatus = document.getElementById('monitorExpectedStatus')?.value.trim() || '';
+    const followRedirects = document.getElementById('monitorFollowRedirects')?.checked ? 1 : 0;
+    const httpHeaders = document.getElementById('monitorHttpHeaders')?.value.trim() || '';
+    const httpBody = document.getElementById('monitorHttpBody')?.value.trim() || '';
     const errBox = document.getElementById('monitorError');
 
     // Collect selected check types
@@ -595,9 +633,15 @@
       port: port ? parseInt(port, 10) : null,
       interval: parseInt(interval, 10),
       timeout: parseInt(timeout, 10),
+      retry_count: parseInt(retryCount, 10) || 2,
       check_ssl: hasSsl ? 1 : 0,
       ssl_alert_days: parseInt(sslAlertDays, 10),
-      keyword: keyword || null
+      keyword: keyword || null,
+      http_method: httpMethod,
+      expected_status: expectedStatus || null,
+      follow_redirects: followRedirects,
+      http_headers: httpHeaders || null,
+      http_body: httpBody || null
     };
 
     try {
@@ -892,6 +936,33 @@
     document.getElementById('monitorTimeout').value = monitor.timeout;
     document.getElementById('monitorSSLAlertDays').value = monitor.ssl_alert_days || 14;
     document.getElementById('monitorKeyword').value = monitor.keyword || '';
+
+    // Advanced HTTP & Retry fields
+    const retryInput = document.getElementById('monitorRetryCount');
+    if (retryInput) retryInput.value = monitor.retry_count || 2;
+    const methodInput = document.getElementById('monitorHttpMethod');
+    if (methodInput) methodInput.value = monitor.http_method || 'GET';
+    const expectedStatusInput = document.getElementById('monitorExpectedStatus');
+    if (expectedStatusInput) expectedStatusInput.value = monitor.expected_status || '';
+    const followRedirInput = document.getElementById('monitorFollowRedirects');
+    if (followRedirInput) followRedirInput.checked = monitor.follow_redirects !== 0;
+    const headersInput = document.getElementById('monitorHttpHeaders');
+    if (headersInput) headersInput.value = monitor.http_headers || '';
+    const bodyInput = document.getElementById('monitorHttpBody');
+    if (bodyInput) bodyInput.value = monitor.http_body || '';
+
+    // Automatically expand accordion if any advanced option is configured
+    const hasAdvancedConfig =
+      (monitor.http_method && monitor.http_method !== 'GET') ||
+      monitor.expected_status ||
+      monitor.follow_redirects === 0 ||
+      monitor.http_headers ||
+      monitor.http_body;
+    if (advancedHttpBody) advancedHttpBody.style.display = hasAdvancedConfig ? 'flex' : 'none';
+    if (advancedHttpIcon) {
+      if (hasAdvancedConfig) advancedHttpIcon.classList.add('open');
+      else advancedHttpIcon.classList.remove('open');
+    }
 
     // Parse multi-types
     const types = (monitor.type || 'http').toLowerCase().split(',');
