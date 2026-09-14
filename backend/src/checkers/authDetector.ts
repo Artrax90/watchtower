@@ -14,7 +14,7 @@
 
 export interface DetectAuthResult {
   success: boolean;
-  strategy: 'form_post' | 'redirect_flow' | 'basic_auth' | 'api_endpoint' | 'none';
+  strategy: 'sso_gateway' | 'form_post' | 'redirect_flow' | 'basic_auth' | 'api_endpoint' | 'none';
   targetUrl: string;
   httpMethod: string;
   expectedStatus: string;
@@ -30,6 +30,11 @@ export interface DetectAuthResult {
     detectedStatus?: number;
     errorSample?: string;
     redirectUrl?: string;
+    ssoRealm?: string;
+    ssoDomain?: string;
+    ssoLoginUrl?: string;
+    realmUrl?: string;
+    portalTitle?: string;
   };
 }
 
@@ -115,11 +120,11 @@ function extractErrorFromHtml(html: string): string | null {
 /**
  * Inspects a target URL and tests authentication mechanisms.
  */
-export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000): Promise<DetectAuthResult> {
+export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000): Promise<DetectAuthResult> {
   const targetUrl = normalizeUrl(targetInput);
 
   try {
-    // Step 1: Initial GET with manual redirect to detect SSO/OAuth redirect flows
+    // Step 1: Initial GET with manual redirect to detect HTTP 302 / SSO redirects
     const initialController = new AbortController();
     const initialTimer = setTimeout(() => initialController.abort(), timeoutMs);
 
@@ -225,7 +230,25 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000)
       clearTimeout(pageTimer);
     }
 
-    // Step 3: Search for HTML login form with password input
+    // Step 3: Check Client-side HTML meta refresh or inline JS redirects
+    const metaRefreshMatch = pageHtml.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]+content=["']?\d+;\s*url=([^"'>\s]+)["']?/i);
+    if (metaRefreshMatch && metaRefreshMatch[1]) {
+      try {
+        const clientRedirectUrl = new URL(metaRefreshMatch[1], finalUrl).href;
+        const destRes = await fetch(clientRedirectUrl, {
+          method: 'GET',
+          headers: { 'User-Agent': BROWSER_USER_AGENT },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(3500)
+        });
+        if (destRes.ok) {
+          finalUrl = destRes.url || clientRedirectUrl;
+          pageHtml = await destRes.text();
+        }
+      } catch {}
+    }
+
+    // Step 4: Search for HTML login form with password input
     const formRegex = /<form\b([\s\S]*?)<\/form>/gi;
     let formMatch: RegExpExecArray | null;
     let bestForm: {
@@ -388,7 +411,219 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000)
       };
     }
 
-    // Step 4: No HTML form found -> Check standard SPA / REST API login endpoints
+    // Step 5: SPA Auth Discovery (Keycloak, OIDC, SSO config endpoints & bundle scanning)
+    const targetUrlObj = new URL(finalUrl);
+
+    // List of standard SPA auth config endpoints
+    const spaEndpoints = [
+      '/api/tenants/auth/',
+      '/api/tenants/auth',
+      '/api/auth/config',
+      '/api/auth/settings',
+      '/api/settings/auth/',
+      '/api/settings/auth',
+      '/api/config',
+      '/keycloak.json',
+      '/.well-known/openid-configuration',
+      '/oauth2/.well-known/openid-configuration'
+    ];
+
+    // Check script files in HTML to discover custom auth endpoints or configs
+    const scriptSrcs = [...pageHtml.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]);
+    for (const src of scriptSrcs.slice(0, 5)) {
+      try {
+        const fullSrc = new URL(src, targetUrlObj.origin).href;
+        const sRes = await fetch(fullSrc, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT },
+          signal: AbortSignal.timeout(2500)
+        });
+        if (sRes.ok) {
+          const sText = await sRes.text();
+          // Look for /api/ paths mentioning auth, tenant, sso, etc.
+          const apiMatches = sText.match(/\/api\/[a-zA-Z0-9_\-\/]*(?:tenant|auth|oidc|sso)[a-zA-Z0-9_\-\/]*/gi) || [];
+          for (const m of apiMatches) {
+            if (!spaEndpoints.includes(m)) {
+              spaEndpoints.push(m);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Probe SPA auth configuration endpoints concurrently
+    const spaProbePromises = spaEndpoints.map(async (ep) => {
+      try {
+        const url = new URL(ep, targetUrlObj.origin).href;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json' },
+          signal: AbortSignal.timeout(3000)
+        });
+        if (!res.ok) return null;
+        const text = await res.text();
+        const json = JSON.parse(text);
+        return { endpoint: ep, url, json };
+      } catch {
+        return null;
+      }
+    });
+
+    const spaResults = (await Promise.all(spaProbePromises)).filter(Boolean);
+
+    for (const resItem of spaResults) {
+      if (!resItem) continue;
+      const data = resItem.json;
+      if (!data || typeof data !== 'object') continue;
+
+      // Check Keycloak format (e.g. { type: 'keycloak', realm: 'ph', client_id: 'ph-portal', domain: 'https://sso...' })
+      const isKeycloak =
+        data.type === 'keycloak' ||
+        data.realm ||
+        data['auth-server-url'] ||
+        (data.domain && String(data.domain).includes('sso'));
+
+      if (isKeycloak) {
+        const domain = (data.domain || data['auth-server-url'] || '').replace(/\/$/, '');
+        const realm = data.realm || '';
+        const clientId = data.client_id || data.resource || '';
+        const uri = data.uri ? data.uri.replace(/\/$/, '') : '';
+
+        if (domain && realm) {
+          const realmUrl = `${domain}${uri}/realms/${realm}`;
+          const ssoLoginUrl = `${domain}${uri}/realms/${realm}/protocol/openid-connect/auth?client_id=${encodeURIComponent(clientId || 'account')}&redirect_uri=${encodeURIComponent(targetUrl)}&response_type=code&scope=openid`;
+
+          // Verify the realm and login URLs
+          let portalTitle = '';
+          let realmVerified = false;
+
+          try {
+            const realmCheck = await fetch(realmUrl, {
+              headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json' },
+              signal: AbortSignal.timeout(3000)
+            });
+            if (realmCheck.ok) {
+              realmVerified = true;
+            }
+          } catch {}
+
+          try {
+            const loginCheck = await fetch(ssoLoginUrl, {
+              headers: { 'User-Agent': BROWSER_USER_AGENT },
+              signal: AbortSignal.timeout(3500)
+            });
+            if (loginCheck.ok) {
+              const html = await loginCheck.text();
+              const tMatch = html.match(/<title>([^<]+)<\/title>/i);
+              if (tMatch && tMatch[1]) {
+                portalTitle = tMatch[1].trim();
+              }
+            }
+          } catch {}
+
+          const chosenKeyword = portalTitle || (realmVerified ? 'public_key' : realm);
+
+          return {
+            success: true,
+            strategy: 'sso_gateway',
+            targetUrl: ssoLoginUrl,
+            httpMethod: 'GET',
+            expectedStatus: '200',
+            keyword: chosenKeyword,
+            followRedirects: 1,
+            summary: `Обнаружен клиентский редирект (SPA) на шлюз авторизации Keycloak SSO: ${realmUrl}. ` +
+                     `Страница входа: ${domain} (клиент: «${clientId}»). ` +
+                     `Проверка доступности шлюза настроена автоматически (код 200 + проверка ключевого слова). Логин и пароль не требуются!`,
+            details: {
+              ssoRealm: realm,
+              ssoDomain: domain,
+              ssoLoginUrl,
+              realmUrl,
+              portalTitle,
+              detectedStatus: 200
+            }
+          };
+        }
+      }
+
+      // Check generic OIDC / OAuth2 format (e.g. { issuer: '...', authorization_endpoint: '...' })
+      if (data.authorization_endpoint || data.issuer) {
+        const authEndpoint = data.authorization_endpoint || data.issuer;
+        return {
+          success: true,
+          strategy: 'sso_gateway',
+          targetUrl: authEndpoint,
+          httpMethod: 'GET',
+          expectedStatus: '200',
+          followRedirects: 1,
+          summary: `Обнаружен шлюз авторизации OpenID Connect / OAuth2: ${authEndpoint}. ` +
+                   `Проверка доступности шлюза настроена автоматически!`,
+          details: {
+            ssoLoginUrl: authEndpoint,
+            detectedStatus: 200
+          }
+        };
+      }
+    }
+
+    // Step 6: Check HTML Login Links (<a href="...">)
+    const linkRegex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let linkMatch: RegExpExecArray | null;
+    const candidateLinks: string[] = [];
+
+    while ((linkMatch = linkRegex.exec(pageHtml)) !== null) {
+      const href = linkMatch[1].trim();
+      const text = linkMatch[2].replace(/<[^>]+>/g, '').trim().toLowerCase();
+      const lowerHref = href.toLowerCase();
+
+      const isLoginLink =
+        text.includes('войти') ||
+        text.includes('вход') ||
+        text.includes('авториз') ||
+        text.includes('sign in') ||
+        text.includes('log in') ||
+        text.includes('login') ||
+        lowerHref.includes('/login') ||
+        lowerHref.includes('/auth') ||
+        lowerHref.includes('/signin') ||
+        lowerHref.includes('/sso');
+
+      if (isLoginLink && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        candidateLinks.push(href);
+      }
+    }
+
+    for (const cl of candidateLinks.slice(0, 3)) {
+      try {
+        const resolvedLink = new URL(cl, finalUrl).href;
+        if (resolvedLink !== finalUrl) {
+          const linkRes = await fetch(resolvedLink, {
+            headers: { 'User-Agent': BROWSER_USER_AGENT },
+            signal: AbortSignal.timeout(3000)
+          });
+          if (linkRes.ok) {
+            const linkHtml = await linkRes.text();
+            if (linkHtml.includes('type="password"') || linkHtml.includes("type='password'")) {
+              return {
+                success: true,
+                strategy: 'sso_gateway',
+                targetUrl: resolvedLink,
+                httpMethod: 'GET',
+                expectedStatus: '200',
+                keyword: 'password',
+                followRedirects: 1,
+                summary: `Обнаружена страница авторизации по ссылке на сайте: ${resolvedLink}. ` +
+                         `Найдена форма ввода пароля. Проверка настроена автоматически!`,
+                details: {
+                  ssoLoginUrl: resolvedLink,
+                  detectedStatus: linkRes.status
+                }
+              };
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Step 7: Check standard REST API login endpoints
     const commonApiPaths = [
       '/api/auth/login',
       '/api/login',
@@ -398,13 +633,8 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000)
       '/api/authenticate'
     ];
 
-    const targetUrlObj = new URL(finalUrl);
-
     for (const apiPath of commonApiPaths) {
       const candidateUrl = new URL(apiPath, targetUrlObj.origin).href;
-      const apiController = new AbortController();
-      const apiTimer = setTimeout(() => apiController.abort(), 3500);
-
       try {
         const apiRes = await fetch(candidateUrl, {
           method: 'POST',
@@ -417,11 +647,10 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000)
             username: 'watchtower_probe',
             password: 'probe_password_123'
           }),
-          signal: apiController.signal
+          signal: AbortSignal.timeout(2500)
         });
 
         const text = await apiRes.text();
-        // If it responds with auth error (400, 401, 403, 422)
         if ([400, 401, 403, 422].includes(apiRes.status)) {
           let kw: string | undefined;
           try {
@@ -447,14 +676,10 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000)
             }
           };
         }
-      } catch {
-        // Skip candidate on error/timeout
-      } finally {
-        clearTimeout(apiTimer);
-      }
+      } catch {}
     }
 
-    // Fallback: No active form or API found
+    // Fallback: No active form, SSO, or API found
     return {
       success: false,
       strategy: 'none',
@@ -462,8 +687,8 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 7000)
       httpMethod: 'GET',
       expectedStatus: '200',
       followRedirects: 1,
-      summary: `Форма входа на главной странице не обнаружена (HTTP ${pageRes.status}). ` +
-               `Если форма находится на отдельном адресе, укажите прямую ссылку (например, ${targetUrlObj.origin}/login).`
+      summary: `Форма авторизации или шлюз SSO не найдены автоматически (HTTP ${pageRes.status}). ` +
+               `Если авторизация находится на отдельном адресе, укажите прямую ссылку (например, ${targetUrlObj.origin}/login).`
     };
   } catch (err: any) {
     return {

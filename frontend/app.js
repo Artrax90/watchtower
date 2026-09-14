@@ -599,25 +599,52 @@
           document.getElementById('monitorFollowRedirects').checked = res.followRedirects !== 0;
         }
 
-        // If target URL needs update (e.g. redirected or found specific action)
+        // If target URL needs update or SSO gateway was detected
         let targetNotice = '';
-        if (res.targetUrl && res.targetUrl !== targetInput && res.strategy === 'form_post') {
+        if (res.strategy === 'sso_gateway') {
+          const loginUrl = res.details?.ssoLoginUrl || res.targetUrl;
+          const realmUrl = res.details?.realmUrl;
+          targetNotice = `
+            <div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(34,197,94,0.3);font-size:10.5px">
+              <div style="margin-bottom:5px;font-weight:600;color:var(--text)">📍 Шлюз авторизации определен. Выберите адрес для мониторинга:</div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);padding:5px 8px;border-radius:4px;gap:8px">
+                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px">
+                    <span style="color:var(--text);font-weight:600">Страница входа:</span> <code style="font-size:9.5px">${escapeHtml(loginUrl)}</code>
+                  </div>
+                  <button type="button" class="btn btn-secondary" id="applySsoLoginBtn" style="padding:2px 8px;font-size:10px;flex-shrink:0">Установить URL входа</button>
+                </div>
+                ${realmUrl ? `
+                <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);padding:5px 8px;border-radius:4px;gap:8px">
+                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px">
+                    <span style="color:var(--text);font-weight:600">Realm API (JSON):</span> <code style="font-size:9.5px">${escapeHtml(realmUrl)}</code>
+                  </div>
+                  <button type="button" class="btn btn-secondary" id="applySsoRealmBtn" style="padding:2px 8px;font-size:10px;flex-shrink:0">Установить Realm API</button>
+                </div>` : ''}
+              </div>
+            </div>
+          `;
+        } else if (res.targetUrl && res.targetUrl !== targetInput) {
           targetNotice = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(34,197,94,0.3);font-size:10px">` +
-            `📍 Адрес формы: <code>${res.targetUrl}</code> ` +
+            `📍 Адрес формы: <code>${escapeHtml(res.targetUrl)}</code> ` +
             `<button type="button" class="btn btn-secondary" id="applyTargetUrlBtn" style="padding:2px 6px;font-size:9.5px;margin-left:6px">Обновить URL в карточке</button></div>`;
         }
+
+        const titleText = res.strategy === 'sso_gateway'
+          ? 'Шлюз авторизации (SSO) успешно обнаружен и настройки применены!'
+          : 'Форма авторизации успешно определена и настройки применены!';
 
         detectAuthResult.className = 'smart-auth-result-box success';
         detectAuthResult.innerHTML = `
           <div style="display:flex;align-items:flex-start;gap:8px">
             <i data-lucide="check-circle" style="width:16px;height:16px;color:var(--green);flex-shrink:0;margin-top:2px"></i>
             <div>
-              <b style="color:var(--green)">Форма авторизации успешно определена и настройки применены!</b>
+              <b style="color:var(--green)">${titleText}</b>
               <div style="margin-top:4px;color:var(--text)">${res.summary}</div>
               <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px">
                 <span class="badge" style="background:rgba(89,105,232,0.15);color:var(--primary);font-size:9.5px">Метод: ${res.httpMethod}</span>
                 <span class="badge" style="background:rgba(34,197,94,0.15);color:var(--green);font-size:9.5px">Ожидаемый статус: ${res.expectedStatus}</span>
-                ${res.keyword ? `<span class="badge" style="background:rgba(236,157,34,0.15);color:var(--amber);font-size:9.5px">Ключевое слово: «${res.keyword}»</span>` : ''}
+                ${res.keyword ? `<span class="badge" style="background:rgba(236,157,34,0.15);color:var(--amber);font-size:9.5px">Ключевое слово: «${escapeHtml(res.keyword)}»</span>` : ''}
               </div>
               ${targetNotice}
             </div>
@@ -628,6 +655,24 @@
         document.getElementById('applyTargetUrlBtn')?.addEventListener('click', () => {
           document.getElementById('monitorTarget').value = res.targetUrl;
           showToast('Адрес монитора обновлён');
+        });
+
+        document.getElementById('applySsoLoginBtn')?.addEventListener('click', () => {
+          const loginUrl = res.details?.ssoLoginUrl || res.targetUrl;
+          document.getElementById('monitorTarget').value = loginUrl;
+          if (res.keyword) document.getElementById('monitorKeyword').value = res.keyword;
+          document.getElementById('monitorExpectedStatus').value = res.expectedStatus || '200';
+          showToast('Установлен адрес страницы входа SSO');
+        });
+
+        document.getElementById('applySsoRealmBtn')?.addEventListener('click', () => {
+          const realmUrl = res.details?.realmUrl;
+          if (realmUrl) {
+            document.getElementById('monitorTarget').value = realmUrl;
+            document.getElementById('monitorKeyword').value = 'public_key';
+            document.getElementById('monitorExpectedStatus').value = '200';
+            showToast('Установлен адрес Realm API шлюза SSO');
+          }
         });
 
         showToast('Параметры авторизации автоматически определены!');
