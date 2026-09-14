@@ -13,7 +13,7 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
     try {
       const parsed = new URL(url);
       const port = parsed.port ? parseInt(parsed.port, 10) : 443;
-      sslResult = await checkSSL(parsed.hostname, port, Math.min(target.timeout, 5000));
+      sslResult = await checkSSL(parsed.hostname, port, target.timeout);
     } catch {
       // Ignored if URL parsing fails
     }
@@ -51,7 +51,7 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
         status: 'degraded',
         latency,
         statusCode,
-        error: `Keyword "${target.keyword}" not found in response`,
+        error: `Ключевое слово "${target.keyword}" не найдено в ответе`,
         ssl: sslResult
       };
     }
@@ -59,11 +59,15 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
     if (statusCode >= 200 && statusCode < 400) {
       // Check if SSL is expired or expiring critically
       if (sslResult && !sslResult.valid) {
+        const isTimeout = sslResult.error?.toLowerCase().includes('timed out');
+        const sslMsg = isTimeout
+          ? `Таймаут проверки TLS-рукопожатия: ${sslResult.error}`
+          : `SSL-сертификат просрочен или недействителен: ${sslResult.error || 'Истёк срок действия'}`;
         return {
           status: 'degraded',
           latency,
           statusCode,
-          error: `SSL Certificate expired or invalid: ${sslResult.error || 'Expired'}`,
+          error: sslMsg,
           ssl: sslResult
         };
       }
