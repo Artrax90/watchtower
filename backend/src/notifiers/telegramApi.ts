@@ -167,18 +167,40 @@ export async function sendMessage(
   },
   proxyUrl?: string
 ): Promise<TelegramApiResponse<TelegramMessage>> {
-  return telegramApiRequest<TelegramMessage>(
+  const parseMode = options?.parse_mode ?? 'HTML';
+  const res = await telegramApiRequest<TelegramMessage>(
     token,
     'sendMessage',
     {
       chat_id: chatId,
       text,
-      parse_mode: options?.parse_mode ?? 'HTML',
+      parse_mode: parseMode,
       reply_markup: options?.reply_markup,
       disable_web_page_preview: options?.disable_web_page_preview ?? true
     },
     proxyUrl
   );
+
+  if (!res.ok) {
+    console.warn(`[TelegramApi] sendMessage error: ${res.description}`);
+    if (res.description && res.description.toLowerCase().includes("can't parse entities")) {
+      console.warn('[TelegramApi] Retrying sendMessage without parse_mode due to entity parsing error...');
+      const fallbackText = text.replace(/<[^>]+>/g, '');
+      return telegramApiRequest<TelegramMessage>(
+        token,
+        'sendMessage',
+        {
+          chat_id: chatId,
+          text: fallbackText,
+          reply_markup: options?.reply_markup,
+          disable_web_page_preview: options?.disable_web_page_preview ?? true
+        },
+        proxyUrl
+      );
+    }
+  }
+
+  return res;
 }
 
 export async function editMessageText(
@@ -193,19 +215,42 @@ export async function editMessageText(
   },
   proxyUrl?: string
 ): Promise<TelegramApiResponse<TelegramMessage | boolean>> {
-  return telegramApiRequest<TelegramMessage | boolean>(
+  const parseMode = options?.parse_mode ?? 'HTML';
+  const res = await telegramApiRequest<TelegramMessage | boolean>(
     token,
     'editMessageText',
     {
       chat_id: chatId,
       message_id: messageId,
       text,
-      parse_mode: options?.parse_mode ?? 'HTML',
+      parse_mode: parseMode,
       reply_markup: options?.reply_markup,
       disable_web_page_preview: options?.disable_web_page_preview ?? true
     },
     proxyUrl
   );
+
+  if (!res.ok) {
+    console.warn(`[TelegramApi] editMessageText error: ${res.description}`);
+    if (res.description && res.description.toLowerCase().includes("can't parse entities")) {
+      console.warn('[TelegramApi] Retrying editMessageText without parse_mode due to entity parsing error...');
+      const fallbackText = text.replace(/<[^>]+>/g, '');
+      return telegramApiRequest<TelegramMessage | boolean>(
+        token,
+        'editMessageText',
+        {
+          chat_id: chatId,
+          message_id: messageId,
+          text: fallbackText,
+          reply_markup: options?.reply_markup,
+          disable_web_page_preview: options?.disable_web_page_preview ?? true
+        },
+        proxyUrl
+      );
+    }
+  }
+
+  return res;
 }
 
 export async function answerCallbackQuery(

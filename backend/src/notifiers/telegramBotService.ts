@@ -296,7 +296,9 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
   const isAdmin = role === 'admin';
 
   // Split command and argument (e.g. "/check google" or "/add https://test.com Тест")
-  const parts = text.split(/\s+/);
+  // Normalize leading slash with spaces, e.g. "/ ssl" -> "/ssl", "/  status" -> "/status"
+  const cleanText = text.replace(/^\/\s+/, '/').trim();
+  const parts = cleanText.split(/\s+/);
   const rawCmd = parts[0].toLowerCase();
   // Strip bot username if invoked as /cmd@botname
   const cmd = rawCmd.split('@')[0];
@@ -304,29 +306,39 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
 
   switch (cmd) {
     case '/start':
-    case '/help': {
+    case '/help':
+    case 'help':
+    case 'помощь': {
       const helpHtml = getHelpText(role);
       const kb = getHelpKeyboard(role);
       await sendMessage(cfg.botToken, chatId, helpHtml, { reply_markup: kb }, cfg.proxyUrl);
       break;
     }
 
-    case '/status': {
+    case '/status':
+    case 'status':
+    case 'статус': {
       await sendStatusMessage(chatId, cfg);
       break;
     }
 
-    case '/monitors': {
+    case '/monitors':
+    case 'monitors':
+    case 'мониторы': {
       await sendMonitorsMessage(chatId, cfg, undefined, role);
       break;
     }
 
-    case '/check': {
+    case '/check':
+    case 'check':
+    case 'проверка': {
       await handleCheckCommand(chatId, arg, cfg);
       break;
     }
 
-    case '/pause': {
+    case '/pause':
+    case 'pause':
+    case 'пауза': {
       if (!isAdmin) {
         await sendMessage(
           cfg.botToken,
@@ -341,7 +353,8 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
       break;
     }
 
-    case '/resume': {
+    case '/resume':
+    case 'resume': {
       if (!isAdmin) {
         await sendMessage(
           cfg.botToken,
@@ -356,17 +369,21 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
       break;
     }
 
-    case '/ssl': {
+    case '/ssl':
+    case 'ssl': {
       await sendSslMessage(chatId, cfg);
       break;
     }
 
-    case '/incidents': {
+    case '/incidents':
+    case 'incidents':
+    case 'инциденты': {
       await sendIncidentsMessage(chatId, cfg);
       break;
     }
 
-    case '/add': {
+    case '/add':
+    case 'add': {
       if (!isAdmin) {
         await sendMessage(
           cfg.botToken,
@@ -1014,14 +1031,20 @@ async function sendSslMessage(chatId: string | number, cfg: ActiveTelegramConfig
 
     lines.push(`${icon} <b>${escapeHtml(m.name)}</b>: ${textDays}`);
     if (m.ssl_expiry_date) {
-      lines.push(`   <small>Истекает: ${escapeHtml(m.ssl_expiry_date)}</small>`);
+      lines.push(`   <i>Истекает: ${escapeHtml(m.ssl_expiry_date)}</i>`);
     }
   }
+
+  lines.push(``);
+  lines.push(`<i>⏱ Обновлено: ${new Date().toLocaleString('ru-RU')}</i>`);
 
   const kb: TelegramInlineKeyboard = {
     inline_keyboard: [
       [
-        { text: '📊 Статус', callback_data: 'cmd:status' },
+        { text: '🔄 Обновить', callback_data: 'cmd:ssl' },
+        { text: '📊 Статус', callback_data: 'cmd:status' }
+      ],
+      [
         { text: '🖥 Мониторы', callback_data: 'cmd:monitors' }
       ]
     ]
