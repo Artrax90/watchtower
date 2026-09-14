@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { dbQueries } from '../db/index.js';
 import { requireAdmin } from './auth.js';
-import { sendTestNotification, testProxyConnection } from '../notifiers/index.js';
+import { sendTestNotification, testProxyConnection, restartTelegramBot } from '../notifiers/index.js';
 import { randomUUID } from 'node:crypto';
 
 export async function notificationRoutes(fastify: FastifyInstance) {
@@ -68,6 +68,10 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         config: JSON.stringify(config)
       });
 
+      if (type.toLowerCase() === 'telegram') {
+        restartTelegramBot();
+      }
+
       return { success: true, id: channelId };
     }
   );
@@ -78,6 +82,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
     { preHandler: requireAdmin },
     async (req) => {
       dbQueries.deleteNotificationChannel(req.params.id);
+      restartTelegramBot();
       return { success: true };
     }
   );

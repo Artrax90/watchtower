@@ -27,7 +27,11 @@ export function normalizeProxyUrl(rawUrl: string): string {
   return url;
 }
 
-export async function sendTelegramMessage(config: TelegramConfig, text: string): Promise<{ success: boolean; error?: string }> {
+export async function sendTelegramMessage(
+  config: TelegramConfig,
+  text: string,
+  inlineKeyboard?: any
+): Promise<{ success: boolean; error?: string }> {
   try {
     const token = (config.botToken || '').trim();
     const chatId = (config.chatId || '').trim();
@@ -41,7 +45,8 @@ export async function sendTelegramMessage(config: TelegramConfig, text: string):
       chat_id: chatId,
       text: text,
       parse_mode: 'HTML',
-      disable_web_page_preview: true
+      disable_web_page_preview: true,
+      ...(inlineKeyboard ? { reply_markup: inlineKeyboard } : {})
     });
 
     // If proxy is configured, use Node's https with HttpsProxyAgent or SocksProxyAgent (with remote DNS)

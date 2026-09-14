@@ -1,6 +1,7 @@
 import { dbQueries, MonitorRow } from '../db/index.js';
 import { runCheck, CheckResult } from '../checkers/index.js';
 import { broadcastAlert } from '../notifiers/index.js';
+import { snoozeManager } from '../notifiers/snoozeManager.js';
 import { randomUUID } from 'node:crypto';
 
 let isRunning = false;
@@ -99,12 +100,15 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
         });
 
         // Broadcast DOWN alert
-        await broadcastAlert({
-          monitorName: monitor.name,
-          monitorTarget: monitor.target,
-          type: 'DOWN',
-          error: result.error || 'Service unreachable'
-        });
+        if (!snoozeManager.isSnoozed(monitor.id)) {
+          await broadcastAlert({
+            monitorId: monitor.id,
+            monitorName: monitor.name,
+            monitorTarget: monitor.target,
+            type: 'DOWN',
+            error: result.error || 'Service unreachable'
+          });
+        }
       }
     } else if (result.status === 'degraded') {
       consecutiveFailures = 0;
@@ -131,21 +135,27 @@ export async function executeMonitorCheck(monitor: MonitorRow): Promise<CheckRes
       if (now - lastAlertTime > twentyFourHours) {
         if (result.ssl.daysRemaining <= 0) {
           sslAlertTimestamps.set(monitor.id, now);
-          await broadcastAlert({
-            monitorName: monitor.name,
-            monitorTarget: monitor.target,
-            type: 'SSL_EXPIRED',
-            error: result.ssl.error || 'Certificate validity expired'
-          });
+          if (!snoozeManager.isSnoozed(monitor.id)) {
+            await broadcastAlert({
+              monitorId: monitor.id,
+              monitorName: monitor.name,
+              monitorTarget: monitor.target,
+              type: 'SSL_EXPIRED',
+              error: result.ssl.error || 'Certificate validity expired'
+            });
+          }
         } else if (result.ssl.daysRemaining <= monitor.ssl_alert_days) {
           sslAlertTimestamps.set(monitor.id, now);
-          await broadcastAlert({
-            monitorName: monitor.name,
-            monitorTarget: monitor.target,
-            type: 'SSL_EXPIRING',
-            sslDaysRemaining: result.ssl.daysRemaining,
-            sslExpiryDate: result.ssl.expiryDate
-          });
+          if (!snoozeManager.isSnoozed(monitor.id)) {
+            await broadcastAlert({
+              monitorId: monitor.id,
+              monitorName: monitor.name,
+              monitorTarget: monitor.target,
+              type: 'SSL_EXPIRING',
+              sslDaysRemaining: result.ssl.daysRemaining,
+              sslExpiryDate: result.ssl.expiryDate
+            });
+          }
         }
       }
     }
@@ -180,6 +190,7 @@ function resolveIncidentAndNotify(monitor: MonitorRow, now: number, latency?: nu
   dbQueries.resolveOpenIncident(monitor.id);
 
   broadcastAlert({
+    monitorId: monitor.id,
     monitorName: monitor.name,
     monitorTarget: monitor.target,
     type: 'UP',

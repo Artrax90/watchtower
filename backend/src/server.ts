@@ -11,6 +11,7 @@ import { monitorRoutes } from './routes/monitors.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { statsRoutes } from './routes/stats.js';
 import { startScheduler, stopScheduler } from './scheduler/index.js';
+import { startTelegramBot, stopTelegramBot } from './notifiers/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,6 +99,9 @@ async function start() {
 
     // Start background monitor scheduler
     startScheduler();
+
+    // Start Telegram Bot interactive service
+    startTelegramBot();
   } catch (err) {
     server.log.error(err);
     process.exit(1);
@@ -108,6 +112,7 @@ async function start() {
 const shutdown = () => {
   console.log('\nGracefully shutting down Watchtower...');
   stopScheduler();
+  stopTelegramBot();
   server.close(() => {
     console.log('Server closed. Goodbye!');
     process.exit(0);
