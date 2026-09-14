@@ -1857,12 +1857,12 @@
               <div class="diag-chain-step">
                 <div class="diag-chain-num">${stepNum}</div>
                 <div class="diag-chain-content">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                    <span style="font-weight:600;font-size:12.5px">${escapeHtml(stepTitle)}</span>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                    <span style="font-weight:600;font-size:11.5px">${escapeHtml(stepTitle)}</span>
                     <span class="step-status-pill ${statusClass}">${statusText}</span>
                   </div>
-                  ${stepTarget ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--primary);margin-top:3px;word-break:break-all">${escapeHtml(stepTarget)}</div>` : ''}
-                  <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${escapeHtml(step.details || '')}</div>
+                  ${stepTarget ? `<div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--primary);margin-top:2px;word-break:break-all">${escapeHtml(stepTarget)}</div>` : ''}
+                  <div style="font-size:10.5px;color:var(--muted);margin-top:2px">${escapeHtml(step.details || '')}</div>
                 </div>
               </div>
             `;

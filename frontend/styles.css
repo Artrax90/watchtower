@@ -43,8 +43,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -58,102 +58,102 @@ aside {
   flex-direction: column;
   position: sticky;
   top: 0;
-  width: 250px;
+  width: 215px;
   height: 100vh;
-  flex: 0 0 250px;
+  flex: 0 0 215px;
   background: var(--side);
   border-right: 1px solid var(--line);
-  padding: 24px 16px 16px;
+  padding: 20px 12px 14px;
 }
 
 .brand {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   text-decoration: none;
   color: var(--text);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: -0.5px;
-  padding: 0 12px 26px;
+  letter-spacing: -0.4px;
+  padding: 0 8px 20px;
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   background: var(--primary);
   color: #fff;
-  border-radius: 9px;
+  border-radius: 7px;
 }
 
 .brand-mark svg {
-  width: 19px;
+  width: 16px;
 }
 
 .workspace {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--line);
   background: var(--bg);
-  padding: 11px 12px;
-  border-radius: 10px;
-  margin: 0 2px 22px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin: 0 0 16px;
 }
 
 .workspace-icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   color: #fff;
   background: linear-gradient(135deg, #6f7df6, #5761d6);
-  border-radius: 8px;
-  font: 600 12px 'JetBrains Mono', monospace;
+  border-radius: 6px;
+  font: 600 11px 'JetBrains Mono', monospace;
 }
 
 .workspace div {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   flex: 1;
 }
 
 .workspace b {
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .workspace small {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
 }
 
 .workspace svg {
-  width: 15px;
+  width: 13px;
   color: var(--muted);
 }
 
 nav {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 nav a {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
   color: var(--muted);
-  font-size: 13.5px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 10px 14px;
-  border-radius: 9px;
+  padding: 8px 11px;
+  border-radius: 7px;
 }
 
 nav a svg {
-  width: 18px;
+  width: 15px;
 }
 
 nav a.active,
@@ -165,7 +165,7 @@ nav a:hover {
 nav em {
   font-style: normal;
   margin-left: auto;
-  font: 600 12px 'JetBrains Mono', monospace;
+  font: 600 11px 'JetBrains Mono', monospace;
   color: var(--muted);
 }
 
@@ -175,10 +175,10 @@ nav .bad-num {
 
 .nav-cap {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  margin: 28px 14px 10px;
+  letter-spacing: 0.1em;
+  margin: 20px 10px 8px;
 }
 
 .aside-bottom {
@@ -188,14 +188,14 @@ nav .bad-num {
 .plan {
   display: flex;
   align-items: center;
-  gap: 9px;
-  border-radius: 10px;
+  gap: 8px;
+  border-radius: 8px;
   background: var(--soft);
-  padding: 11px 13px;
+  padding: 8px 10px;
 }
 
 .plan > svg:first-child {
-  width: 18px;
+  width: 15px;
   color: var(--primary);
 }
 
@@ -206,16 +206,16 @@ nav .bad-num {
 }
 
 .plan b {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .plan small {
-  font-size: 11px;
+  font-size: 9.5px;
   color: var(--muted);
 }
 
 .plan > svg:last-child {
-  width: 15px;
+  width: 13px;
   color: var(--muted);
 }
 
@@ -223,46 +223,46 @@ nav .bad-num {
   border: 0;
   background: transparent;
   color: var(--text);
-  padding: 15px 8px 0;
+  padding: 10px 4px 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   text-align: left;
   cursor: pointer;
 }
 
 .user span {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: linear-gradient(135deg, #f5c3b2, #cc8b96);
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 10px;
   color: #562e39;
   font-weight: 700;
 }
 
 .user b {
-  font-size: 13px;
+  font-size: 11.5px;
   flex: 1;
 }
 
 .user svg {
-  width: 16px;
+  width: 14px;
   color: var(--muted);
 }
 
 main {
   width: 100%;
-  max-width: 1600px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 0 40px 48px;
+  padding: 0 28px 36px;
 }
 
 header {
-  height: 76px;
+  height: 62px;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -273,16 +273,16 @@ header {
 .head-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .breadcrumb {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .breadcrumb svg {
-  width: 16px;
+  width: 14px;
 }
 
 .breadcrumb b {
@@ -291,10 +291,10 @@ header {
 
 .icon-btn {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   background: var(--card);
@@ -304,134 +304,135 @@ header {
 }
 
 .icon-btn svg {
-  width: 18px;
+  width: 15px;
 }
 
 .icon-btn span {
   position: absolute;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--red);
-  top: 7px;
-  right: 7px;
+  top: 6px;
+  right: 6px;
   border: 2px solid var(--card);
 }
 
 .add {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 0;
   background: var(--primary);
   color: #fff;
-  border-radius: 9px;
-  padding: 10px 16px;
-  font: 600 13px Inter, sans-serif;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font: 600 11.5px Inter, sans-serif;
   cursor: pointer;
-  box-shadow: 0 7px 15px #5969e828;
+  box-shadow: 0 4px 12px #5969e828;
   transition: opacity 0.15s;
 }
 
 .add svg {
-  width: 17px;
+  width: 15px;
 }
 
 .intro {
-  padding: 28px 0 22px;
+  padding: 20px 0 16px;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
 }
 
 .intro h1 {
-  font-size: 28px;
-  letter-spacing: -0.6px;
+  font-size: 21px;
+  letter-spacing: -0.4px;
   margin: 0;
   font-weight: 700;
 }
 
 .intro p {
-  margin: 7px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11.5px;
 }
 
 .intro-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .overall {
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--green);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .overall i {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 0 4px var(--green-soft);
+  box-shadow: 0 0 0 3px var(--green-soft);
 }
 
 .period {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   background: var(--card);
   border: 1px solid var(--line);
   color: var(--text);
-  border-radius: 9px;
-  padding: 9px 12px;
-  font: 600 12px Inter, sans-serif;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font: 600 11px Inter, sans-serif;
   cursor: pointer;
 }
 
 .period svg {
-  width: 15px;
+  width: 13px;
   color: var(--muted);
 }
 
 .period svg:last-child {
-  width: 13px;
-  margin-left: 4px;
+  width: 11px;
+  margin-left: 3px;
 }
 
 .summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 22px;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .summary article {
   position: relative;
   border: 1px solid var(--line);
   background: var(--card);
-  padding: 18px 20px;
-  border-radius: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
   box-shadow: var(--shadow);
+  min-height: 82px;
 }
 
 .summary-icon {
   position: absolute;
-  right: 18px;
-  top: 18px;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  right: 14px;
+  top: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
 }
 
 .summary-icon svg {
-  width: 18px;
+  width: 15px;
 }
 
 .purple {
@@ -457,20 +458,20 @@ header {
 .summary p {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .summary strong {
   display: block;
-  margin-top: 14px;
-  font-size: 28px;
-  letter-spacing: -0.6px;
+  margin-top: 8px;
+  font-size: 20px;
+  letter-spacing: -0.3px;
   font-weight: 700;
 }
 
 .summary strong em {
-  font-size: 14px;
+  font-size: 11px;
   font-style: normal;
   color: var(--muted);
   letter-spacing: 0;
@@ -479,8 +480,8 @@ header {
 .summary small {
   display: block;
   color: var(--muted);
-  font-size: 12px;
-  margin-top: 8px;
+  font-size: 10.5px;
+  margin-top: 5px;
 }
 
 .summary small b {
@@ -500,12 +501,12 @@ header {
 .response-card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 11px;
   box-shadow: var(--shadow);
 }
 
 .monitor-top {
-  padding: 20px 22px;
+  padding: 14px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -513,7 +514,7 @@ header {
 
 .monitor-top h2,
 .card-heading h2 {
-  font-size: 16px;
+  font-size: 13.5px;
   margin: 0;
   letter-spacing: -0.2px;
   font-weight: 700;
@@ -522,28 +523,28 @@ header {
 .monitor-top p,
 .card-heading p {
   color: var(--muted);
-  font-size: 12.5px;
-  margin: 5px 0 0;
+  font-size: 11px;
+  margin: 3px 0 0;
 }
 
 .tools {
   display: flex;
-  gap: 8px;
+  gap: 7px;
 }
 
 .search {
-  height: 38px;
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 12px;
+  gap: 6px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   background: var(--bg);
-  border-radius: 8px;
+  border-radius: 7px;
 }
 
 .search svg {
-  width: 16px;
+  width: 14px;
   color: var(--muted);
 }
 
@@ -552,8 +553,8 @@ header {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font: 13px Inter, sans-serif;
-  width: 150px;
+  font: 11px Inter, sans-serif;
+  width: 130px;
 }
 
 .search input::placeholder {
@@ -562,44 +563,44 @@ header {
 
 .filter,
 .view {
-  height: 38px;
+  height: 32px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 14px;
+  gap: 5px;
+  padding: 0 11px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--muted);
-  font: 600 12.5px Inter, sans-serif;
+  font: 600 11px Inter, sans-serif;
   cursor: pointer;
 }
 
 .filter svg,
 .view svg {
-  width: 16px;
+  width: 14px;
 }
 
 .view {
-  width: 38px;
+  width: 32px;
   padding: 0;
   justify-content: center;
 }
 
 .groups {
   display: flex;
-  gap: 22px;
-  padding: 0 22px;
+  gap: 16px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--line);
 }
 
 .group {
-  padding: 12px 0;
+  padding: 9px 0;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--muted);
-  font: 600 13px Inter, sans-serif;
+  font: 600 11px Inter, sans-serif;
   cursor: pointer;
 }
 
@@ -609,8 +610,8 @@ header {
 }
 
 .group b {
-  font: 600 11.5px 'JetBrains Mono', monospace;
-  margin-left: 4px;
+  font: 600 10px 'JetBrains Mono', monospace;
+  margin-left: 3px;
 }
 
 .table-wrap {
@@ -627,18 +628,18 @@ th {
   text-align: left;
   color: var(--muted);
   background: var(--bg);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
-  padding: 14px 22px;
+  padding: 9px 16px;
   border-bottom: 1px solid var(--line);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
 td {
-  padding: 16px 22px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
-  font-size: 13.5px;
+  font-size: 11.5px;
 }
 
 tbody tr:hover {
@@ -648,36 +649,36 @@ tbody tr:hover {
 .monitor-name {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 250px;
+  gap: 10px;
+  min-width: 220px;
 }
 
 .monitor-name > div {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .monitor-name b {
-  font-size: 14.5px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .monitor-name small {
-  font: 12.5px 'JetBrains Mono', monospace;
+  font: 10.5px 'JetBrains Mono', monospace;
   color: var(--muted);
 }
 
 .mon-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
 }
 
 .mon-icon svg {
-  width: 18px;
+  width: 14px;
 }
 
 .api {
@@ -708,17 +709,17 @@ tbody tr:hover {
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .status i {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 0 3px currentColor;
+  box-shadow: 0 0 0 2.5px currentColor;
   opacity: 0.85;
 }
 
@@ -737,29 +738,29 @@ tbody tr:hover {
 .uptime {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 8px;
 }
 
 .uptime > b {
-  font: 600 13px 'JetBrains Mono', monospace;
+  font: 600 11px 'JetBrains Mono', monospace;
 }
 
 .ticks {
   display: flex;
   align-items: flex-end;
-  height: 18px;
-  gap: 3px;
+  height: 14px;
+  gap: 2px;
 }
 
 .ticks i {
-  width: 4px;
-  height: 16px;
+  width: 3px;
+  height: 11px;
   background: var(--green);
-  border-radius: 2px;
+  border-radius: 1px;
 }
 
 .ticks i:nth-child(3n) {
-  height: 12px;
+  height: 8px;
 }
 
 .ticks .orange {
@@ -771,12 +772,12 @@ tbody tr:hover {
 }
 
 .mono {
-  font: 600 13px 'JetBrains Mono', monospace;
+  font: 600 11px 'JetBrains Mono', monospace;
 }
 
 .mono small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .warn-text {
@@ -789,16 +790,16 @@ tbody tr:hover {
 }
 
 .time {
-  font-size: 12.5px;
+  font-size: 10px;
 }
 
 .dots {
   border: 0;
   background: transparent;
   color: var(--muted);
-  padding: 4px;
+  padding: 2px 4px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 5px;
 }
 
 .dots:hover {
@@ -807,33 +808,33 @@ tbody tr:hover {
 }
 
 .dots svg {
-  width: 19px;
+  width: 16px;
 }
 
 .show-more {
   width: 100%;
-  padding: 14px;
+  padding: 10px;
   border: 0;
   background: transparent;
   color: var(--primary);
-  font: 600 12.5px Inter, sans-serif;
+  font: 600 11px Inter, sans-serif;
   cursor: pointer;
 }
 
 .show-more svg {
   vertical-align: -3px;
-  width: 16px;
+  width: 13px;
 }
 
 .bottom-grid {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
-  gap: 20px;
-  margin-top: 22px;
+  gap: 14px;
+  margin-top: 16px;
 }
 
 .card-heading {
-  padding: 20px 22px;
+  padding: 14px 18px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -843,42 +844,42 @@ tbody tr:hover {
   border: 0;
   background: transparent;
   color: var(--primary);
-  font: 600 12px Inter, sans-serif;
+  font: 600 10.5px Inter, sans-serif;
   cursor: pointer;
 }
 
 .card-heading button svg {
-  width: 14px;
+  width: 12px;
   vertical-align: -3px;
 }
 
 .card-heading h2 > b {
-  font: 600 11px 'JetBrains Mono', monospace;
+  font: 600 10px 'JetBrains Mono', monospace;
   color: var(--red);
   background: var(--red-soft);
-  padding: 3px 6px;
-  border-radius: 8px;
+  padding: 2px 5px;
+  border-radius: 6px;
 }
 
 .incident-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 15px 22px;
+  gap: 10px;
+  padding: 10px 18px;
   border-top: 1px solid var(--line);
 }
 
 .incident-dot {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  flex: 0 0 34px;
+  border-radius: 6px;
+  flex: 0 0 28px;
 }
 
 .incident-dot svg {
-  width: 17px;
+  width: 14px;
 }
 
 .critical-dot {
@@ -896,23 +897,23 @@ tbody tr:hover {
 }
 
 .incident-row b {
-  font-size: 13.5px;
+  font-size: 11.5px;
 }
 
 .incident-row p {
-  font-size: 12px;
+  font-size: 10.5px;
   color: var(--muted);
-  margin: 5px 0 0;
+  margin: 3px 0 0;
 }
 
 .incident-row p span {
   background: var(--red-soft);
   color: var(--red);
-  padding: 3px 6px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 9.5px;
   font-weight: 600;
-  margin-right: 5px;
+  margin-right: 4px;
 }
 
 .incident-row p .warn-badge {
@@ -928,33 +929,33 @@ tbody tr:hover {
 }
 
 .incident-arrow svg {
-  width: 16px;
+  width: 14px;
 }
 
 .chart-value {
-  font: 600 22px 'JetBrains Mono', monospace;
+  font: 600 18px 'JetBrains Mono', monospace;
 }
 
 .chart-value small {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--muted);
 }
 
 .bar-chart {
-  height: 90px;
-  padding: 0 22px;
+  height: 72px;
+  padding: 0 18px;
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   border-bottom: 1px solid var(--line);
 }
 
 .bar-chart i {
   display: block;
   background: var(--soft);
-  border-radius: 4px 4px 0 0;
+  border-radius: 3px 3px 0 0;
   flex: 1;
-  min-width: 5px;
+  min-width: 4px;
 }
 
 .bar-chart .current {
@@ -964,9 +965,9 @@ tbody tr:hover {
 .chart-axis {
   display: flex;
   justify-content: space-between;
-  padding: 10px 22px 16px;
+  padding: 7px 18px 12px;
   color: var(--muted);
-  font: 11px 'JetBrains Mono', monospace;
+  font: 9px 'JetBrains Mono', monospace;
 }
 
 .toast {
@@ -976,10 +977,10 @@ tbody tr:hover {
   transform: translateY(100px);
   background: var(--text);
   color: var(--card);
-  padding: 12px 18px;
-  border-radius: 9px;
+  padding: 9px 14px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   transition: 0.25s;
   z-index: 100000;
@@ -990,7 +991,7 @@ tbody tr:hover {
 }
 
 .toast svg {
-  width: 16px;
+  width: 14px;
   color: var(--green);
   vertical-align: -3px;
 }
@@ -999,13 +1000,13 @@ tbody tr:hover {
 .monitor-chain-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 5px;
-  padding: 3px 9px;
+  gap: 5px;
+  margin-top: 3px;
+  padding: 2px 6px;
   background: rgba(89, 105, 232, 0.08);
   border: 1px solid rgba(89, 105, 232, 0.25);
-  border-radius: 6px;
-  font-size: 11.5px;
+  border-radius: 4px;
+  font-size: 10px;
   cursor: pointer;
   transition: all 0.15s ease;
   width: fit-content;
@@ -1014,18 +1015,19 @@ tbody tr:hover {
 .monitor-chain-tag:hover {
   background: rgba(89, 105, 232, 0.18);
   border-color: var(--primary);
-  box-shadow: 0 2px 8px rgba(89, 105, 232, 0.2);
+  box-shadow: 0 2px 6px rgba(89, 105, 232, 0.15);
 }
 .chain-badge-part {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
 }
 .chain-badge-part svg {
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   color: var(--muted);
 }
 .chain-badge-part.auth {
@@ -1038,7 +1040,7 @@ tbody tr:hover {
 }
 .chain-badge-arrow {
   color: var(--primary);
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: bold;
 }
 .type-badge.auth-badge {
@@ -1053,34 +1055,34 @@ tbody tr:hover {
 
 /* Diagnostic Modal Chain Pipeline Details */
 .diag-chain-card {
-  margin-top: 14px;
+  margin-top: 10px;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: 8px;
+  padding: 10px 12px;
 }
 .diag-chain-header {
   font-weight: 700;
-  font-size: 13px;
-  margin-bottom: 12px;
+  font-size: 11.5px;
+  margin-bottom: 8px;
   color: var(--text);
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
 }
 .diag-chain-steps {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
 }
 .diag-chain-step {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 6px;
+  padding: 8px 10px;
 }
 .diag-chain-step.ok {
   border-color: rgba(34, 197, 94, 0.3);
@@ -1089,17 +1091,17 @@ tbody tr:hover {
   border-color: rgba(235, 82, 97, 0.3);
 }
 .diag-chain-num {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--soft);
   color: var(--primary);
   font-weight: 700;
-  font-size: 11px;
+  font-size: 10px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .diag-chain-step.ok .diag-chain-num {
   background: var(--green-soft);
@@ -1116,13 +1118,13 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 .step-status-pill {
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
 }
 .step-status-pill.ok {
   background: var(--green-soft);
@@ -1134,24 +1136,14 @@ tbody tr:hover {
 }
 .diag-chain-url {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--primary);
-  margin: 4px 0 2px;
+  margin: 2px 0 1px;
   word-break: break-all;
 }
 .diag-chain-sub {
   color: var(--muted);
-  font-size: 11.5px;
-}
-
-/* Responsive & High-Res Scaling */
-@media (min-width: 1440px) {
-  body {
-    font-size: 14.5px;
-  }
-  main {
-    max-width: 1680px;
-  }
+  font-size: 10.5px;
 }
 
 @media (max-width: 1050px) {
