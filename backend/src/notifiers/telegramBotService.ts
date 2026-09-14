@@ -8,57 +8,89 @@ import {
   setMyCommands,
   deleteWebhook,
   TelegramUpdate,
-  TelegramInlineKeyboard
+  TelegramInlineKeyboard,
+  TelegramInlineButton
 } from './telegramApi.js';
 import { getErrorExplanation } from './errorExplanations.js';
 import { snoozeManager } from './snoozeManager.js';
 import { normalizeProxyUrl } from './telegram.js';
 import { randomUUID } from 'node:crypto';
 
-let isPolling = false;
-let abortController: AbortController | null = null;
-let lastUpdateId = 0;
+export interface TelegramUserRecord {
+  id: string;
+  name?: string;
+  role: 'admin' | 'viewer';
+}
 
 export interface ActiveTelegramConfig {
   botToken: string;
   chatId: string;
   allowedUserIds: string[];
+  allowedUsers: TelegramUserRecord[];
   proxyUrl?: string;
 }
 
-export function parseUserIds(input: any): string[] {
+export function parseAllowedUsers(input: any): TelegramUserRecord[] {
   if (!input) return [];
   if (Array.isArray(input)) {
     return input
       .map((x) => {
         if (typeof x === 'object' && x !== null && (x.id || x.userId)) {
-          return String(x.id || x.userId).trim();
+          const id = String(x.id || x.userId).trim();
+          const name = typeof x.name === 'string' ? x.name.trim() : '';
+          const role = x.role === 'viewer' ? 'viewer' : 'admin';
+          return { id, name, role: role as 'admin' | 'viewer' };
         }
-        return String(x).trim();
+        const id = String(x).trim();
+        return { id, name: '', role: 'admin' as const };
       })
-      .filter((s) => s.length > 0);
+      .filter((u) => u.id.length > 0);
   }
   if (typeof input === 'string' || typeof input === 'number') {
     return String(input)
       .split(/[\s,;]+/)
       .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+      .filter((s) => s.length > 0)
+      .map((id) => ({ id, name: '', role: 'admin' as const }));
   }
   return [];
 }
 
-export function isUserAuthorized(userId: string | number | undefined, cfg: ActiveTelegramConfig): boolean {
-  if (!userId) return false;
-  const uid = String(userId).trim();
-  if (!uid) return false;
-  // If no user IDs are configured in the whitelist, nobody is authorized yet
-  if (!cfg.allowedUserIds || cfg.allowedUserIds.length === 0) {
-    return false;
-  }
-  return cfg.allowedUserIds.includes(uid);
+export function parseUserIds(input: any): string[] {
+  return parseAllowedUsers(input).map((u) => u.id);
 }
 
-function getActiveTelegramConfig(): ActiveTelegramConfig | null {
+export function getUserRecord(userId: string | number | undefined, cfg: ActiveTelegramConfig): TelegramUserRecord | null {
+  if (!userId) return null;
+  const uid = String(userId).trim();
+  if (!uid) return null;
+  const found = (cfg.allowedUsers || []).find((u) => u.id === uid);
+  if (found) return found;
+  if ((cfg.allowedUserIds || []).includes(uid)) {
+    return { id: uid, name: '', role: 'admin' };
+  }
+  return null;
+}
+
+export function getUserRole(userId: string | number | undefined, cfg: ActiveTelegramConfig): 'admin' | 'viewer' | null {
+  const rec = getUserRecord(userId, cfg);
+  return rec ? rec.role : null;
+}
+
+export function isUserAuthorized(userId: string | number | undefined, cfg: ActiveTelegramConfig): boolean {
+  return getUserRole(userId, cfg) !== null;
+}
+
+export function isUserAdmin(userId: string | number | undefined, cfg: ActiveTelegramConfig): boolean {
+  return getUserRole(userId, cfg) === 'admin';
+}
+
+let isPolling = false;
+let pollingCycle = 0;
+let abortController: AbortController | null = null;
+let lastUpdateId = 0;
+
+export function getActiveTelegramConfig(): ActiveTelegramConfig | null {
   const channels = dbQueries.getNotificationChannels();
   const tgChannel = channels.find((c) => c.type === 'telegram' && c.is_enabled === 1);
   if (!tgChannel) return null;
@@ -66,13 +98,15 @@ function getActiveTelegramConfig(): ActiveTelegramConfig | null {
   try {
     const cfg = JSON.parse(tgChannel.config);
     if (cfg && cfg.botToken) {
-      const rawUserIds = cfg.allowedUsers ?? cfg.userIds ?? cfg.allowedUserIds ?? cfg.userId ?? '';
-      const allowedUserIds = parseUserIds(rawUserIds);
+      const rawUserSource = cfg.allowedUsers ?? cfg.userIds ?? cfg.allowedUserIds ?? cfg.userId ?? '';
+      const allowedUsers = parseAllowedUsers(rawUserSource);
+      const allowedUserIds = allowedUsers.map((u) => u.id);
 
       return {
         botToken: cfg.botToken.trim(),
         chatId: (cfg.chatId || '').trim(),
         allowedUserIds,
+        allowedUsers,
         proxyUrl: (cfg.proxyUrl || '').trim() || undefined
       };
     }
@@ -95,9 +129,10 @@ export async function startTelegramBot() {
   }
 
   isPolling = true;
+  const currentCycle = ++pollingCycle;
   abortController = new AbortController();
 
-  console.log(`[TelegramBot] Starting Telegram bot polling... (Proxy: ${cfg.proxyUrl || 'none'})`);
+  console.log(`[TelegramBot] Starting Telegram bot polling... (Cycle: ${currentCycle}, Proxy: ${cfg.proxyUrl || 'none'})`);
 
   // Ensure any stale webhook is deleted so getUpdates polling works cleanly
   try {
@@ -115,13 +150,13 @@ export async function startTelegramBot() {
       cfg.botToken,
       [
         { command: 'status', description: '📊 Сводка доступности и Uptime' },
-        { command: 'monitors', description: '🖥 Список мониторов и управление' },
+        { command: 'monitors', description: '🖥 Список мониторов и состояние' },
         { command: 'check', description: '🔍 Экспресс-проверка сервиса' },
-        { command: 'pause', description: '⏸ Поставить монитор на паузу' },
-        { command: 'resume', description: '▶ Возобновить монитор' },
+        { command: 'pause', description: '⏸ Поставить монитор на паузу (Админ)' },
+        { command: 'resume', description: '▶ Возобновить монитор (Админ)' },
         { command: 'ssl', description: '🔒 Сроки действия SSL-сертификатов' },
         { command: 'incidents', description: '⚠️ История сбоев и аварий' },
-        { command: 'add', description: '➕ Добавить монитор: /add <url> [имя]' },
+        { command: 'add', description: '➕ Добавить монитор (Админ)' },
         { command: 'help', description: 'ℹ️ Справка по всем командам' }
       ],
       cfg.proxyUrl
@@ -131,43 +166,55 @@ export async function startTelegramBot() {
   }
 
   // Polling loop
-  pollLoop(cfg).catch((err) => {
+  pollLoop(currentCycle).catch((err) => {
     console.error('[TelegramBot] Unexpected polling loop crash:', err);
     isPolling = false;
   });
 }
 
-export function stopTelegramBot() {
+export async function stopTelegramBot() {
+  pollingCycle++;
   if (!isPolling) return;
   isPolling = false;
   if (abortController) {
-    abortController.abort();
+    try {
+      abortController.abort();
+    } catch {}
     abortController = null;
   }
   console.log('[TelegramBot] Telegram bot polling stopped.');
 }
 
 export async function restartTelegramBot() {
-  stopTelegramBot();
-  // Brief delay to let previous socket finish
-  await new Promise((r) => setTimeout(r, 600));
+  await stopTelegramBot();
+  // Delay to let previous long-polling socket abort and terminate cleanly
+  await new Promise((r) => setTimeout(r, 1000));
   await startTelegramBot();
 }
 
-async function pollLoop(cfg: ActiveTelegramConfig) {
-  while (isPolling) {
+async function pollLoop(cycle: number) {
+  while (isPolling && cycle === pollingCycle) {
+    const cfg = getActiveTelegramConfig();
+    if (!cfg) {
+      await sleep(3000);
+      continue;
+    }
+
     try {
       const res = await getUpdates(cfg.botToken, lastUpdateId + 1, 25, cfg.proxyUrl, abortController?.signal);
+
+      if (cycle !== pollingCycle || !isPolling) break;
 
       if (res.ok && Array.isArray(res.result)) {
         for (const update of res.result) {
           lastUpdateId = Math.max(lastUpdateId, update.update_id);
-          handleUpdate(update, cfg).catch((err) => {
+          const currentCfg = getActiveTelegramConfig() || cfg;
+          handleUpdate(update, currentCfg).catch((err) => {
             console.error('[TelegramBot] Error handling update:', err);
           });
         }
       } else if (!res.ok) {
-        // Token invalid or network problem - back off
+        if (cycle !== pollingCycle || !isPolling) break;
         console.warn('[TelegramBot] getUpdates error:', res.description);
         if (res.description && res.description.toLowerCase().includes('webhook is active')) {
           console.log('[TelegramBot] Detected active webhook, clearing with deleteWebhook...');
@@ -178,14 +225,16 @@ async function pollLoop(cfg: ActiveTelegramConfig) {
             console.warn('[TelegramBot] Failed to clear webhook:', e.message);
           }
         }
-        await sleep(5000);
+        await sleep(4000);
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') break;
+      if (cycle !== pollingCycle || !isPolling) break;
+      if (err.name === 'AbortError' || err.code === 'ABORT_ERR') break;
       console.warn('[TelegramBot] Polling network cycle error:', err.message);
-      await sleep(4000);
+      await sleep(3000);
     }
   }
+  console.log(`[TelegramBot] Polling cycle ${cycle} finished.`);
 }
 
 function sleep(ms: number) {
@@ -243,6 +292,9 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
     return;
   }
 
+  const role = getUserRole(fromId, cfg) || 'viewer';
+  const isAdmin = role === 'admin';
+
   // Split command and argument (e.g. "/check google" or "/add https://test.com Тест")
   const parts = text.split(/\s+/);
   const rawCmd = parts[0].toLowerCase();
@@ -253,8 +305,8 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
   switch (cmd) {
     case '/start':
     case '/help': {
-      const helpHtml = getHelpText();
-      const kb = getHelpKeyboard();
+      const helpHtml = getHelpText(role);
+      const kb = getHelpKeyboard(role);
       await sendMessage(cfg.botToken, chatId, helpHtml, { reply_markup: kb }, cfg.proxyUrl);
       break;
     }
@@ -265,7 +317,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
     }
 
     case '/monitors': {
-      await sendMonitorsMessage(chatId, cfg);
+      await sendMonitorsMessage(chatId, cfg, undefined, role);
       break;
     }
 
@@ -275,11 +327,31 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
     }
 
     case '/pause': {
+      if (!isAdmin) {
+        await sendMessage(
+          cfg.botToken,
+          chatId,
+          `⛔ <b>Недостаточно прав</b>\n\nКоманда <code>/pause</code> доступна только <b>Администраторам</b> системы.\nВаша роль: <b>Наблюдатель</b> (только просмотр и диагностика).`,
+          {},
+          cfg.proxyUrl
+        );
+        break;
+      }
       await handlePauseCommand(chatId, arg, true, cfg);
       break;
     }
 
     case '/resume': {
+      if (!isAdmin) {
+        await sendMessage(
+          cfg.botToken,
+          chatId,
+          `⛔ <b>Недостаточно прав</b>\n\nКоманда <code>/resume</code> доступна только <b>Администраторам</b> системы.\nВаша роль: <b>Наблюдатель</b> (только просмотр и диагностика).`,
+          {},
+          cfg.proxyUrl
+        );
+        break;
+      }
       await handlePauseCommand(chatId, arg, false, cfg);
       break;
     }
@@ -295,6 +367,16 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
     }
 
     case '/add': {
+      if (!isAdmin) {
+        await sendMessage(
+          cfg.botToken,
+          chatId,
+          `⛔ <b>Недостаточно прав</b>\n\nКоманда <code>/add</code> доступна только <b>Администраторам</b> системы.\nВаша роль: <b>Наблюдатель</b> (только просмотр и диагностика).`,
+          {},
+          cfg.proxyUrl
+        );
+        break;
+      }
       await handleAddCommand(chatId, arg, cfg);
       break;
     }
@@ -335,6 +417,31 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
       cfg.proxyUrl
     );
     return;
+  }
+
+  const role = getUserRole(fromId, cfg) || 'viewer';
+  const isAdmin = role === 'admin';
+
+  // Check admin-only actions
+  if (data.startsWith('snz:') || data.startsWith('unsnz:')) {
+    if (!isAdmin) {
+      await answerCallbackQuery(cfg.botToken, cbId, { text: '⛔ Управление оповещениями доступно только Администраторам.', show_alert: true }, cfg.proxyUrl);
+      return;
+    }
+  }
+
+  if (data.startsWith('pau:') || data.startsWith('res:')) {
+    if (!isAdmin) {
+      await answerCallbackQuery(cfg.botToken, cbId, { text: '⛔ Приостановка и возобновление мониторов доступны только Администраторам.', show_alert: true }, cfg.proxyUrl);
+      return;
+    }
+  }
+
+  if (data === 'cmd:add') {
+    if (!isAdmin) {
+      await answerCallbackQuery(cfg.botToken, cbId, { text: '⛔ Добавление мониторов доступно только Администраторам.', show_alert: true }, cfg.proxyUrl);
+      return;
+    }
   }
 
   // 1. Re-check monitor: chk:<monitorId>
@@ -380,20 +487,26 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
         .filter(Boolean)
         .join('\n');
 
-      const kb: TelegramInlineKeyboard = {
-        inline_keyboard: [
-          [
-            { text: '🔄 Перепроверить', callback_data: `chk:${monitor.id}` },
-            { text: updated.is_paused ? '▶ Возобновить' : '⏸ На паузу', callback_data: updated.is_paused ? `res:${monitor.id}` : `pau:${monitor.id}` }
-          ],
-          [
-            { text: 'ℹ️ Что за ошибка?', callback_data: `exp:${monitor.id}` },
-            { text: '📊 Статус', callback_data: 'cmd:status' }
-          ]
+      const kbRows: TelegramInlineKeyboard['inline_keyboard'] = [
+        [
+          { text: '🔄 Перепроверить', callback_data: `chk:${monitor.id}` }
         ]
-      };
+      ];
 
-      await editMessageText(cfg.botToken, chatId, msg.message_id, updatedText, { reply_markup: kb }, cfg.proxyUrl);
+      if (isAdmin) {
+        kbRows[0].push({ text: updated.is_paused ? '▶ Возобновить' : '⏸ На паузу', callback_data: updated.is_paused ? `res:${monitor.id}` : `pau:${monitor.id}` });
+        kbRows.push([
+          { text: 'ℹ️ Что за ошибка?', callback_data: `exp:${monitor.id}` },
+          { text: '📊 Статус', callback_data: 'cmd:status' }
+        ]);
+      } else {
+        kbRows.push([
+          { text: 'ℹ️ Что за ошибка?', callback_data: `exp:${monitor.id}` },
+          { text: '📊 Статус', callback_data: 'cmd:status' }
+        ]);
+      }
+
+      await editMessageText(cfg.botToken, chatId, msg.message_id, updatedText, { reply_markup: { inline_keyboard: kbRows } }, cfg.proxyUrl);
     }
     return;
   }
@@ -528,7 +641,7 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
   // 7. Inspect single monitor card: det:<monitorId>
   if (data.startsWith('det:')) {
     const monitorId = data.slice(4);
-    await sendSingleMonitorCard(chatId, monitorId, cfg, msg?.message_id);
+    await sendSingleMonitorCard(chatId, monitorId, cfg, msg?.message_id, role);
     await answerCallbackQuery(cfg.botToken, cbId, { text: '' }, cfg.proxyUrl);
     return;
   }
@@ -541,7 +654,7 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
   }
 
   if (data === 'cmd:monitors') {
-    await sendMonitorsMessage(chatId, cfg, msg?.message_id);
+    await sendMonitorsMessage(chatId, cfg, msg?.message_id, role);
     await answerCallbackQuery(cfg.botToken, cbId, { text: 'Список загружен' }, cfg.proxyUrl);
     return;
   }
@@ -559,8 +672,8 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
   }
 
   if (data === 'cmd:help') {
-    const helpHtml = getHelpText();
-    const kb = getHelpKeyboard();
+    const helpHtml = getHelpText(role);
+    const kb = getHelpKeyboard(role);
     if (msg) {
       await editMessageText(cfg.botToken, chatId, msg.message_id, helpHtml, { reply_markup: kb }, cfg.proxyUrl);
     } else {
@@ -645,11 +758,13 @@ async function sendStatusMessage(chatId: string | number, cfg: ActiveTelegramCon
   }
 }
 
-async function sendMonitorsMessage(chatId: string | number, cfg: ActiveTelegramConfig, editMsgId?: number) {
+async function sendMonitorsMessage(chatId: string | number, cfg: ActiveTelegramConfig, editMsgId?: number, userRole: 'admin' | 'viewer' = 'admin') {
   const monitors = dbQueries.getAllMonitors();
 
   if (monitors.length === 0) {
-    const text = 'В системе пока нет добавленных мониторов.\nИспользуйте команду <code>/add &lt;url&gt; [имя]</code> для создания.';
+    const text = userRole === 'admin'
+      ? 'В системе пока нет добавленных мониторов.\nИспользуйте команду <code>/add &lt;url&gt; [имя]</code> для создания.'
+      : 'В системе пока нет добавленных мониторов.\nОжидайте добавления мониторов администратором.';
     if (editMsgId) {
       await editMessageText(cfg.botToken, chatId, editMsgId, text, {}, cfg.proxyUrl);
     } else {
@@ -680,7 +795,7 @@ async function sendMonitorsMessage(chatId: string | number, cfg: ActiveTelegramC
   }
 
   lines.push(``);
-  lines.push(`<i>Нажмите на монитор для управления или экспресс-проверки.</i>`);
+  lines.push(`<i>Нажмите на монитор для просмотра деталей или экспресс-проверки.</i>`);
 
   // Bottom navigation row
   kbRows.push([
@@ -697,10 +812,11 @@ async function sendMonitorsMessage(chatId: string | number, cfg: ActiveTelegramC
   }
 }
 
-async function sendSingleMonitorCard(chatId: string | number, monitorId: string, cfg: ActiveTelegramConfig, editMsgId?: number) {
+async function sendSingleMonitorCard(chatId: string | number, monitorId: string, cfg: ActiveTelegramConfig, editMsgId?: number, userRole: 'admin' | 'viewer' = 'admin') {
   const m = dbQueries.getMonitorById(monitorId);
   if (!m) return;
 
+  const isAdmin = userRole === 'admin';
   const icon = m.is_paused ? '⏸' : m.status === 'online' ? '🟢' : m.status === 'down' ? '🔴' : '🟡';
   const statusRu = m.is_paused ? 'На паузе' : m.status === 'online' ? 'Онлайн' : m.status === 'down' ? 'Недоступен' : 'Деградация';
   const uptime = dbQueries.getMonitorUptime24h(m.id);
@@ -721,28 +837,34 @@ async function sendSingleMonitorCard(chatId: string | number, monitorId: string,
     `<i>Выберите действие для этого сервиса:</i>`
   ].filter(Boolean);
 
-  const kb: TelegramInlineKeyboard = {
-    inline_keyboard: [
-      [
-        { text: '🔄 Проверить сейчас', callback_data: `chk:${m.id}` },
-        { text: m.is_paused ? '▶ Возобновить' : '⏸ На паузу', callback_data: m.is_paused ? `res:${m.id}` : `pau:${m.id}` }
-      ],
-      [
-        { text: '🔕 Заглушить на 1ч', callback_data: `snz:${m.id}:60` },
-        { text: 'ℹ️ Диагностика ошибки', callback_data: `exp:${m.id}` }
-      ],
-      [
-        { text: '🔙 Назад к списку', callback_data: 'cmd:monitors' }
-      ]
+  const kbRows: TelegramInlineKeyboard['inline_keyboard'] = [
+    [
+      { text: '🔄 Проверить сейчас', callback_data: `chk:${m.id}` }
     ]
-  };
+  ];
+
+  if (isAdmin) {
+    kbRows[0].push({ text: m.is_paused ? '▶ Возобновить' : '⏸ На паузу', callback_data: m.is_paused ? `res:${m.id}` : `pau:${m.id}` });
+    kbRows.push([
+      { text: '🔕 Заглушить на 1ч', callback_data: `snz:${m.id}:60` },
+      { text: 'ℹ️ Диагностика ошибки', callback_data: `exp:${m.id}` }
+    ]);
+  } else {
+    kbRows.push([
+      { text: 'ℹ️ Диагностика ошибки', callback_data: `exp:${m.id}` }
+    ]);
+  }
+
+  kbRows.push([
+    { text: '🔙 Назад к списку', callback_data: 'cmd:monitors' }
+  ]);
 
   const text = cardLines.join('\n');
 
   if (editMsgId) {
-    await editMessageText(cfg.botToken, chatId, editMsgId, text, { reply_markup: kb }, cfg.proxyUrl);
+    await editMessageText(cfg.botToken, chatId, editMsgId, text, { reply_markup: { inline_keyboard: kbRows } }, cfg.proxyUrl);
   } else {
-    await sendMessage(cfg.botToken, chatId, text, { reply_markup: kb }, cfg.proxyUrl);
+    await sendMessage(cfg.botToken, chatId, text, { reply_markup: { inline_keyboard: kbRows } }, cfg.proxyUrl);
   }
 }
 
@@ -1079,37 +1201,60 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function getHelpText(): string {
-  return [
+export function getHelpText(role: 'admin' | 'viewer' = 'admin'): string {
+  const isAdmin = role === 'admin';
+  const roleBadge = isAdmin ? '👑 Администратор' : '👁️ Наблюдатель';
+
+  const lines = [
     `🗼 <b>Watchtower Monitoring Bot</b>`,
     `Круглосуточный мониторинг сервисов, API и SSL-сертификатов.`,
+    `👤 <b>Ваша роль:</b> ${roleBadge}`,
     ``,
     `📌 <b>Доступные команды:</b>`,
     `• <b>/status</b> — общая сводка доступности инфраструктуры`,
     `• <b>/monitors</b> — список всех добавленных сервисов`,
     `• <b>/check &lt;имя или ID&gt;</b> — мгновенная экспресс-проверка`,
-    `• <b>/pause &lt;имя&gt;</b> — поставить монитор на паузу`,
-    `• <b>/resume &lt;имя&gt;</b> — возобновить мониторинг`,
     `• <b>/ssl</b> — статус и сроки истечения SSL-сертификатов`,
-    `• <b>/incidents</b> — журнал недавних сбоев и аварий`,
-    `• <b>/add &lt;URL&gt; [имя]</b> — добавить новый монитор`,
+    `• <b>/incidents</b> — журнал недавних сбоев и аварий`
+  ];
+
+  if (isAdmin) {
+    lines.push(
+      `• <b>/pause &lt;имя&gt;</b> — поставить монитор на паузу`,
+      `• <b>/resume &lt;имя&gt;</b> — возобновить мониторинг`,
+      `• <b>/add &lt;URL&gt; [имя]</b> — добавить новый монитор`
+    );
+  }
+
+  lines.push(
     ``,
     `<i>Нажмите кнопку ниже для быстрого действия:</i>`
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
 
-export function getHelpKeyboard(): TelegramInlineKeyboard {
-  return {
-    inline_keyboard: [
-      [
-        { text: '📊 Статус инфраструктуры', callback_data: 'cmd:status' },
-        { text: '🖥 Мониторы', callback_data: 'cmd:monitors' }
-      ],
-      [
-        { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' },
-        { text: '⚠️ Инциденты', callback_data: 'cmd:incidents' }
-      ]
+export function getHelpKeyboard(role: 'admin' | 'viewer' = 'admin'): TelegramInlineKeyboard {
+  const isAdmin = role === 'admin';
+  const rows: TelegramInlineButton[][] = [
+    [
+      { text: '📊 Статус инфраструктуры', callback_data: 'cmd:status' },
+      { text: '🖥 Мониторы', callback_data: 'cmd:monitors' }
+    ],
+    [
+      { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' },
+      { text: '⚠️ Инциденты', callback_data: 'cmd:incidents' }
     ]
+  ];
+
+  if (isAdmin) {
+    rows.push([
+      { text: '➕ Добавить монитор', callback_data: 'cmd:add' }
+    ]);
+  }
+
+  return {
+    inline_keyboard: rows
   };
 }
 
@@ -1123,21 +1268,7 @@ export async function sendWelcomeToUsers(userIds: string[], rawConfig: any): Pro
   const rawProxy = rawConfig.proxyUrl || '';
   const proxyUrl = rawProxy ? normalizeProxyUrl(rawProxy) : undefined;
 
-  const welcomeHtml = [
-    `🎉 <b>Добро пожаловать в Watchtower!</b>`,
-    ``,
-    `Администратор подтвердил ваш доступ к системе мониторинга.`,
-    ``,
-    `Теперь вам доступны все возможности прямо из этого чата:`,
-    `• 🔔 Мгновенные алерты о сбоях сервисов и SSL-сертификатов`,
-    `• 🔄 Интерактивные кнопки перепроверки прямо под алертами`,
-    `• 📊 <b>/status</b> — общая сводка доступности и Uptime`,
-    `• 🖥 <b>/monitors</b> — список сервисов и управление`,
-    `• 🔍 <b>/check &lt;url/имя&gt;</b> — мгновенная экспресс-проверка`,
-    `• ➕ <b>/add &lt;url&gt; [имя]</b> — добавление новых мониторов`,
-    ``,
-    `<i>Нажмите кнопку ниже или отправьте /start для начала работы:</i>`
-  ].join('\n');
+  const parsedUsers = parseAllowedUsers(rawConfig.allowedUsers ?? rawConfig.userIds ?? rawConfig.allowedUserIds ?? rawConfig.userId ?? '');
 
   const kb: TelegramInlineKeyboard = {
     inline_keyboard: [
@@ -1152,8 +1283,42 @@ export async function sendWelcomeToUsers(userIds: string[], rawConfig: any): Pro
   };
 
   for (const uid of userIds) {
+    const userRec = parsedUsers.find((u) => u.id === uid) || { id: uid, name: '', role: 'admin' as const };
+    const isAdmin = userRec.role === 'admin';
+
+    const welcomeLines = [
+      `🎉 <b>Добро пожаловать в Watchtower!</b>`,
+      ``,
+      isAdmin
+        ? `Администратор предоставил вам доступ с правами 👑 <b>Администратора</b>.`
+        : `Администратор предоставил вам доступ с правами 👁️ <b>Наблюдателя</b> (только чтение).`,
+      ``,
+      `Вам доступны следующие возможности прямо из этого чата:`,
+      `• 🔔 Мгновенные алерты о сбоях сервисов и SSL-сертификатов`,
+      `• 🔄 Интерактивные кнопки перепроверки сервисов`,
+      `• 📊 <b>/status</b> — общая сводка доступности и Uptime`,
+      `• 🖥 <b>/monitors</b> — список сервисов`,
+      `• 🔍 <b>/check &lt;url/имя&gt;</b> — мгновенная экспресс-проверка`,
+      `• 🔒 <b>/ssl</b> — статус SSL-сертификатов`,
+      `• ⚠️ <b>/incidents</b> — список инцидентов`
+    ];
+
+    if (isAdmin) {
+      welcomeLines.push(
+        `• ➕ <b>/add &lt;url&gt; [имя]</b> — быстрое добавление сервиса`,
+        `• ⏸ <b>/pause &lt;id&gt;</b> и ▶️ <b>/resume &lt;id&gt;</b> — управление мониторингом`
+      );
+    }
+
+    welcomeLines.push(
+      ``,
+      `<i>Нажмите кнопку ниже или отправьте /start для начала работы:</i>`
+    );
+
+    const welcomeHtml = welcomeLines.join('\n');
+
     try {
-      console.log(`[TelegramBot] Sending proactive welcome message to newly authorized user: ${uid}...`);
+      console.log(`[TelegramBot] Sending proactive welcome message to newly authorized user: ${uid} (Role: ${userRec.role})...`);
       const res = await sendMessage(
         token,
         uid,

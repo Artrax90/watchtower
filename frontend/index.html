@@ -879,11 +879,22 @@
         <!-- Add User Form -->
         <div class="tg-add-user-box">
           <label class="tg-add-user-title">
-            <i data-lucide="user-plus"></i> Добавить пользователя
+            <i data-lucide="user-plus"></i> Добавить пользователя в белый список
           </label>
-          <div class="tg-add-user-row">
+          <div class="tg-add-user-inputs-row">
             <input type="text" class="form-input" id="newTgUserId" placeholder="User ID (напр: 123456789)" style="font-family:'JetBrains Mono',monospace">
-            <input type="text" class="form-input" id="newTgUserName" placeholder="Имя / Заметка (напр: Иван)">
+            <input type="text" class="form-input" id="newTgUserName" placeholder="Имя / Заметка (напр: Иван Инженер)">
+          </div>
+          <div class="tg-add-user-controls-row">
+            <div class="tg-add-user-role-wrap">
+              <label for="newTgUserRole" class="tg-role-label">
+                <i data-lucide="shield"></i> Роль:
+              </label>
+              <select class="form-select tg-role-select" id="newTgUserRole" style="flex:1">
+                <option value="admin" selected>👑 Администратор (полный доступ, /add, пауза)</option>
+                <option value="viewer">👁️ Наблюдатель (только чтение и проверка)</option>
+              </select>
+            </div>
             <button type="button" class="btn btn-primary" id="tgAddUserBtn">
               <i data-lucide="plus"></i> Добавить
             </button>

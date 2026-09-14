@@ -1013,7 +1013,7 @@
   }
 
   // --- Telegram Whitelist State & Modal Handlers ---
-  let tgAllowedUsers = []; // Array of { id: string, name?: string }
+  let tgAllowedUsers = []; // Array of { id: string, name?: string, role: 'admin' | 'viewer' }
 
   function parseLoadedTgUsers(config) {
     if (!config) return [];
@@ -1021,9 +1021,13 @@
       return config.allowedUsers
         .map((u) => {
           if (typeof u === 'object' && u !== null && u.id) {
-            return { id: String(u.id).trim(), name: (u.name || '').trim() };
+            return {
+              id: String(u.id).trim(),
+              name: (u.name || '').trim(),
+              role: u.role === 'viewer' ? 'viewer' : 'admin'
+            };
           }
-          return { id: String(u).trim(), name: '' };
+          return { id: String(u).trim(), name: '', role: 'admin' };
         })
         .filter((u) => u.id);
     }
@@ -1033,7 +1037,7 @@
         .split(/[\s,;]+/)
         .map((s) => s.trim())
         .filter(Boolean)
-        .map((id) => ({ id, name: '' }));
+        .map((id) => ({ id, name: '', role: 'admin' }));
     }
     return [];
   }
@@ -1065,10 +1069,14 @@
     } else {
       container.innerHTML = tgAllowedUsers
         .map((u) => {
+          const isAdmin = u.role !== 'viewer';
+          const roleIcon = isAdmin ? '👑' : '👁️';
+          const roleTitle = isAdmin ? 'Администратор' : 'Наблюдатель';
+          const roleTag = `<span class="chip-role-tag ${isAdmin ? 'admin' : 'viewer'}" title="${roleTitle}">${roleIcon} ${isAdmin ? 'Админ' : 'Наблюдатель'}</span>`;
           const nameLabel = u.name ? `<span class="chip-name">${escapeHtml(u.name)}</span>` : '';
           return `
-            <span class="tg-user-chip" title="ID: ${u.id}">
-              <i data-lucide="user" style="width:12px;height:12px;color:var(--primary)"></i>
+            <span class="tg-user-chip" title="ID: ${u.id} (${roleTitle})">
+              ${roleTag}
               <code>${escapeHtml(u.id)}</code>
               ${nameLabel}
               <button type="button" class="chip-del-btn" onclick="window.removeTgUser('${u.id}')" title="Удалить из списка">×</button>
@@ -1099,6 +1107,7 @@
     } else {
       container.innerHTML = tgAllowedUsers
         .map((u) => {
+          const isAdmin = u.role !== 'viewer';
           const nameHtml = u.name
             ? `<b class="tg-user-label">${escapeHtml(u.name)}</b>`
             : `<span style="font-size:11px;color:var(--muted)">Без заметки</span>`;
@@ -1107,26 +1116,32 @@
             <div class="tg-user-card-item">
               <div class="tg-user-card-left">
                 <span class="tg-user-avatar">
-                  <i data-lucide="user-check"></i>
+                  <i data-lucide="${isAdmin ? 'shield-check' : 'eye'}"></i>
                 </span>
                 <div>
-                  <div style="display:flex;align-items:center;gap:7px">
+                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
                     <span class="tg-user-id-code" onclick="navigator.clipboard.writeText('${u.id}'); showToast('ID скопирован: ${u.id}')" title="Нажмите, чтобы скопировать ID">
                       <code>${escapeHtml(u.id)}</code>
                       <i data-lucide="copy" style="width:11px;height:11px"></i>
                     </span>
                     ${nameHtml}
                   </div>
-                  <div>
+                  <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
                     <span class="tg-user-status-badge">
                       <i data-lucide="check-circle"></i> Авторизован
                     </span>
                   </div>
                 </div>
               </div>
-              <button type="button" class="btn-icon-del" onclick="window.removeTgUser('${u.id}')" title="Отозвать доступ">
-                <i data-lucide="trash-2"></i>
-              </button>
+              <div class="tg-user-card-right">
+                <select class="form-select tg-role-select" onchange="window.changeTgUserRole('${u.id}', this.value)" title="Изменить роль пользователя в Telegram боте">
+                  <option value="admin" ${isAdmin ? 'selected' : ''}>👑 Админ</option>
+                  <option value="viewer" ${!isAdmin ? 'selected' : ''}>👁️ Наблюдатель</option>
+                </select>
+                <button type="button" class="btn-icon-del" onclick="window.removeTgUser('${u.id}')" title="Отозвать доступ">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
             </div>
           `;
         })
@@ -1142,14 +1157,26 @@
     showToast('Пользователь удален из списка');
   };
 
+  window.changeTgUserRole = function (id, newRole) {
+    const user = tgAllowedUsers.find((u) => u.id === String(id).trim());
+    if (user) {
+      user.role = newRole === 'viewer' ? 'viewer' : 'admin';
+      renderTgUserChips();
+      renderTgModalUsersList();
+      showToast(`Роль для ${user.name ? `«${user.name}» ` : ''}(${user.id}) изменена на: ${user.role === 'admin' ? 'Администратор' : 'Наблюдатель'}`);
+    }
+  };
+
   function addTgUserFromInputs() {
     const idInput = document.getElementById('newTgUserId');
     const nameInput = document.getElementById('newTgUserName');
+    const roleInput = document.getElementById('newTgUserRole');
     const errBox = document.getElementById('tgUserAddError');
     if (!idInput) return;
 
     const rawId = idInput.value.trim();
     const name = (nameInput?.value || '').trim();
+    const role = roleInput?.value === 'viewer' ? 'viewer' : 'admin';
 
     if (errBox) errBox.style.display = 'none';
 
@@ -1177,13 +1204,13 @@
       return;
     }
 
-    tgAllowedUsers.push({ id: rawId, name });
+    tgAllowedUsers.push({ id: rawId, name, role });
     idInput.value = '';
     if (nameInput) nameInput.value = '';
 
     renderTgUserChips();
     renderTgModalUsersList();
-    showToast(`Пользователь ${name ? `«${name}» ` : ''}(${rawId}) добавлен`);
+    showToast(`Пользователь ${name ? `«${name}» ` : ''}(${rawId}) добавлен (${role === 'admin' ? 'Администратор' : 'Наблюдатель'})`);
   }
 
   document.getElementById('tgAddUserBtn')?.addEventListener('click', addTgUserFromInputs);

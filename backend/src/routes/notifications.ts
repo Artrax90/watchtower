@@ -94,7 +94,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         const newUserIds = parseUserIds(config.allowedUsers ?? config.userIds ?? config.allowedUserIds ?? config.userId);
         const newlyAdded = newUserIds.filter((uid) => !prevUserIds.includes(uid));
 
-        restartTelegramBot();
+        await restartTelegramBot();
 
         if (newlyAdded.length > 0 && config.botToken) {
           sendWelcomeToUsers(newlyAdded, config).catch((err) => {
@@ -113,7 +113,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
     { preHandler: requireAdmin },
     async (req) => {
       dbQueries.deleteNotificationChannel(req.params.id);
-      restartTelegramBot();
+      await restartTelegramBot();
       return { success: true };
     }
   );

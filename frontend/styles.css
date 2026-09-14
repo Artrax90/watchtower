@@ -1041,6 +1041,26 @@ body.not-authenticated #setupModal [data-close-modal] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.chip-role-tag {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  letter-spacing: 0.2px;
+}
+.chip-role-tag.admin {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+.chip-role-tag.viewer {
+  background: var(--soft);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
 .tg-user-chip .chip-del-btn {
   background: transparent;
   border: 0;
@@ -1088,36 +1108,84 @@ body.not-authenticated #setupModal [data-close-modal] {
   height: 14px;
   color: var(--primary);
 }
-.tg-add-user-row {
+.tg-add-user-inputs-row {
   display: flex;
   gap: 8px;
   align-items: center;
   width: 100%;
   box-sizing: border-box;
+  margin-bottom: 8px;
 }
-.tg-add-user-row .form-input {
+.tg-add-user-inputs-row .form-input {
   min-width: 0;
   flex: 1;
   width: 100%;
   font-size: 11px;
 }
-.tg-add-user-row #newTgUserId {
+.tg-add-user-inputs-row #newTgUserId {
   flex: 1.1;
 }
-.tg-add-user-row #newTgUserName {
+.tg-add-user-inputs-row #newTgUserName {
   flex: 1.1;
 }
-.tg-add-user-row .btn {
+.tg-add-user-controls-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+}
+.tg-add-user-role-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.tg-role-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tg-role-label svg {
+  width: 13px;
+  height: 13px;
+  color: var(--primary);
+}
+.tg-role-select {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.tg-role-select:focus {
+  border-color: var(--primary);
+}
+.tg-add-user-controls-row .btn {
   flex: 0 0 auto;
   white-space: nowrap;
-  padding: 9px 14px;
+  padding: 7px 14px;
 }
 @media (max-width: 520px) {
-  .tg-add-user-row {
+  .tg-add-user-inputs-row {
     flex-direction: column;
     align-items: stretch;
   }
-  .tg-add-user-row .btn {
+  .tg-add-user-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .tg-add-user-controls-row .btn {
     width: 100%;
     justify-content: center;
   }
@@ -1137,6 +1205,7 @@ body.not-authenticated #setupModal [data-close-modal] {
   transition: border-color 0.15s;
   box-sizing: border-box;
   width: 100%;
+  gap: 12px;
 }
 .tg-user-card-item:hover {
   border-color: var(--primary);
@@ -1147,6 +1216,12 @@ body.not-authenticated #setupModal [data-close-modal] {
   gap: 12px;
   min-width: 0;
   flex: 1;
+}
+.tg-user-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .tg-user-avatar {
   width: 32px;
