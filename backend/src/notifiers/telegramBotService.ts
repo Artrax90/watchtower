@@ -12,16 +12,43 @@ import {
 } from './telegramApi.js';
 import { getErrorExplanation } from './errorExplanations.js';
 import { snoozeManager } from './snoozeManager.js';
+import { normalizeProxyUrl } from './telegram.js';
 import { randomUUID } from 'node:crypto';
 
 let isPolling = false;
 let abortController: AbortController | null = null;
 let lastUpdateId = 0;
 
-interface ActiveTelegramConfig {
+export interface ActiveTelegramConfig {
   botToken: string;
   chatId: string;
+  allowedUserIds: string[];
   proxyUrl?: string;
+}
+
+export function parseUserIds(input: any): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    return input.map((x) => String(x).trim()).filter((s) => s.length > 0);
+  }
+  if (typeof input === 'string' || typeof input === 'number') {
+    return String(input)
+      .split(/[\s,;]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  return [];
+}
+
+export function isUserAuthorized(userId: string | number | undefined, cfg: ActiveTelegramConfig): boolean {
+  if (!userId) return false;
+  const uid = String(userId).trim();
+  if (!uid) return false;
+  // If no user IDs are configured in the whitelist, nobody is authorized yet
+  if (!cfg.allowedUserIds || cfg.allowedUserIds.length === 0) {
+    return false;
+  }
+  return cfg.allowedUserIds.includes(uid);
 }
 
 function getActiveTelegramConfig(): ActiveTelegramConfig | null {
@@ -32,9 +59,13 @@ function getActiveTelegramConfig(): ActiveTelegramConfig | null {
   try {
     const cfg = JSON.parse(tgChannel.config);
     if (cfg && cfg.botToken) {
+      const rawUserIds = cfg.userIds ?? cfg.allowedUserIds ?? cfg.userId ?? '';
+      const allowedUserIds = parseUserIds(rawUserIds);
+
       return {
         botToken: cfg.botToken.trim(),
         chatId: (cfg.chatId || '').trim(),
+        allowedUserIds,
         proxyUrl: (cfg.proxyUrl || '').trim() || undefined
       };
     }
@@ -166,6 +197,44 @@ async function handleUpdate(update: TelegramUpdate, cfg: ActiveTelegramConfig) {
 async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: ActiveTelegramConfig) {
   const text = (msg.text || '').trim();
   const chatId = msg.chat.id;
+  const fromId = msg.from ? String(msg.from.id) : String(chatId);
+
+  // Security & Authorization Check: only whitelisted user IDs are allowed to access
+  if (!isUserAuthorized(fromId, cfg)) {
+    const senderName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'Пользователь';
+
+    const unauthorizedHtml = [
+      `🔒 <b>Доступ ограничен</b>`,
+      ``,
+      `Здравствуйте, <b>${escapeHtml(senderName)}</b>!`,
+      `У вас пока нет доступа к управлению системой мониторинга <b>Watchtower</b>.`,
+      ``,
+      `🆔 <b>Ваш Telegram User ID:</b>`,
+      `<code>${fromId}</code>`,
+      `<i>(нажмите на номер выше, чтобы скопировать)</i>`,
+      ``,
+      `📋 <b>Инструкция по подключению:</b>`,
+      `1. Скопируйте ваш ID выше.`,
+      `2. Отправьте его администратору системы Watchtower.`,
+      `3. Администратор добавит его в настройках Telegram (в белый список).`,
+      ``,
+      `✨ <i>Как только администратор сохранит ваш ID, бот автоматически пришлёт вам приветственное сообщение и откроет доступ к функциям мониторинга!</i>`
+    ].join('\n');
+
+    const kb: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: `📋 Скопировать мой ID (${fromId})`,
+            copy_text: { text: fromId }
+          }
+        ]
+      ]
+    };
+
+    await sendMessage(cfg.botToken, chatId, unauthorizedHtml, { reply_markup: kb }, cfg.proxyUrl);
+    return;
+  }
 
   // Split command and argument (e.g. "/check google" or "/add https://test.com Тест")
   const parts = text.split(/\s+/);
@@ -177,36 +246,8 @@ async function handleMessage(msg: NonNullable<TelegramUpdate['message']>, cfg: A
   switch (cmd) {
     case '/start':
     case '/help': {
-      const helpHtml = [
-        `🗼 <b>Watchtower Monitoring Bot</b>`,
-        `Круглосуточный мониторинг сервисов, API и SSL-сертификатов.`,
-        ``,
-        `📌 <b>Доступные команды:</b>`,
-        `• <b>/status</b> — общая сводка доступности инфраструктуры`,
-        `• <b>/monitors</b> — список всех добавленных сервисов`,
-        `• <b>/check &lt;имя или ID&gt;</b> — мгновенная экспресс-проверка`,
-        `• <b>/pause &lt;имя&gt;</b> — поставить монитор на паузу`,
-        `• <b>/resume &lt;имя&gt;</b> — возобновить мониторинг`,
-        `• <b>/ssl</b> — статус и сроки истечения SSL-сертификатов`,
-        `• <b>/incidents</b> — журнал недавних сбоев и аварий`,
-        `• <b>/add &lt;URL&gt; [имя]</b> — добавить новый монитор`,
-        ``,
-        `<i>Нажмите кнопку ниже для быстрого действия:</i>`
-      ].join('\n');
-
-      const kb: TelegramInlineKeyboard = {
-        inline_keyboard: [
-          [
-            { text: '📊 Статус инфраструктуры', callback_data: 'cmd:status' },
-            { text: '🖥 Мониторы', callback_data: 'cmd:monitors' }
-          ],
-          [
-            { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' },
-            { text: '⚠️ Инциденты', callback_data: 'cmd:incidents' }
-          ]
-        ]
-      };
-
+      const helpHtml = getHelpText();
+      const kb = getHelpKeyboard();
       await sendMessage(cfg.botToken, chatId, helpHtml, { reply_markup: kb }, cfg.proxyUrl);
       break;
     }
@@ -273,6 +314,21 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
   const cbId = cb.id;
   const msg = cb.message;
   const chatId = msg?.chat.id || cfg.chatId;
+  const fromId = cb.from ? String(cb.from.id) : '';
+
+  // Security & Authorization Check for inline button clicks
+  if (!isUserAuthorized(fromId, cfg)) {
+    await answerCallbackQuery(
+      cfg.botToken,
+      cbId,
+      {
+        text: `⛔ Доступ запрещен. Ваш ID: ${fromId}. Отправьте его администратору.`,
+        show_alert: true
+      },
+      cfg.proxyUrl
+    );
+    return;
+  }
 
   // 1. Re-check monitor: chk:<monitorId>
   if (data.startsWith('chk:')) {
@@ -491,6 +547,18 @@ async function handleCallbackQuery(cb: NonNullable<TelegramUpdate['callback_quer
 
   if (data === 'cmd:incidents') {
     await sendIncidentsMessage(chatId, cfg, msg?.message_id);
+    await answerCallbackQuery(cfg.botToken, cbId, { text: '' }, cfg.proxyUrl);
+    return;
+  }
+
+  if (data === 'cmd:help') {
+    const helpHtml = getHelpText();
+    const kb = getHelpKeyboard();
+    if (msg) {
+      await editMessageText(cfg.botToken, chatId, msg.message_id, helpHtml, { reply_markup: kb }, cfg.proxyUrl);
+    } else {
+      await sendMessage(cfg.botToken, chatId, helpHtml, { reply_markup: kb }, cfg.proxyUrl);
+    }
     await answerCallbackQuery(cfg.botToken, cbId, { text: '' }, cfg.proxyUrl);
     return;
   }
@@ -1003,3 +1071,97 @@ function escapeHtml(str: string): string {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+export function getHelpText(): string {
+  return [
+    `🗼 <b>Watchtower Monitoring Bot</b>`,
+    `Круглосуточный мониторинг сервисов, API и SSL-сертификатов.`,
+    ``,
+    `📌 <b>Доступные команды:</b>`,
+    `• <b>/status</b> — общая сводка доступности инфраструктуры`,
+    `• <b>/monitors</b> — список всех добавленных сервисов`,
+    `• <b>/check &lt;имя или ID&gt;</b> — мгновенная экспресс-проверка`,
+    `• <b>/pause &lt;имя&gt;</b> — поставить монитор на паузу`,
+    `• <b>/resume &lt;имя&gt;</b> — возобновить мониторинг`,
+    `• <b>/ssl</b> — статус и сроки истечения SSL-сертификатов`,
+    `• <b>/incidents</b> — журнал недавних сбоев и аварий`,
+    `• <b>/add &lt;URL&gt; [имя]</b> — добавить новый монитор`,
+    ``,
+    `<i>Нажмите кнопку ниже для быстрого действия:</i>`
+  ].join('\n');
+}
+
+export function getHelpKeyboard(): TelegramInlineKeyboard {
+  return {
+    inline_keyboard: [
+      [
+        { text: '📊 Статус инфраструктуры', callback_data: 'cmd:status' },
+        { text: '🖥 Мониторы', callback_data: 'cmd:monitors' }
+      ],
+      [
+        { text: '🔒 SSL-сертификаты', callback_data: 'cmd:ssl' },
+        { text: '⚠️ Инциденты', callback_data: 'cmd:incidents' }
+      ]
+    ]
+  };
+}
+
+/**
+ * Sends a welcome message to newly authorized Telegram users once their User ID is saved in Watchtower.
+ */
+export async function sendWelcomeToUsers(userIds: string[], rawConfig: any): Promise<void> {
+  const token = (rawConfig.botToken || '').trim();
+  if (!token || !userIds || userIds.length === 0) return;
+
+  const rawProxy = rawConfig.proxyUrl || '';
+  const proxyUrl = rawProxy ? normalizeProxyUrl(rawProxy) : undefined;
+
+  const welcomeHtml = [
+    `🎉 <b>Добро пожаловать в Watchtower!</b>`,
+    ``,
+    `Администратор подтвердил ваш доступ к системе мониторинга.`,
+    ``,
+    `Теперь вам доступны все возможности прямо из этого чата:`,
+    `• 🔔 Мгновенные алерты о сбоях сервисов и SSL-сертификатов`,
+    `• 🔄 Интерактивные кнопки перепроверки прямо под алертами`,
+    `• 📊 <b>/status</b> — общая сводка доступности и Uptime`,
+    `• 🖥 <b>/monitors</b> — список сервисов и управление`,
+    `• 🔍 <b>/check &lt;url/имя&gt;</b> — мгновенная экспресс-проверка`,
+    `• ➕ <b>/add &lt;url&gt; [имя]</b> — добавление новых мониторов`,
+    ``,
+    `<i>Нажмите кнопку ниже или отправьте /start для начала работы:</i>`
+  ].join('\n');
+
+  const kb: TelegramInlineKeyboard = {
+    inline_keyboard: [
+      [
+        { text: '📊 Статус системы', callback_data: 'cmd:status' },
+        { text: '🖥 Список мониторов', callback_data: 'cmd:monitors' }
+      ],
+      [
+        { text: 'ℹ️ Справка по командам', callback_data: 'cmd:help' }
+      ]
+    ]
+  };
+
+  for (const uid of userIds) {
+    try {
+      console.log(`[TelegramBot] Sending proactive welcome message to newly authorized user: ${uid}...`);
+      const res = await sendMessage(
+        token,
+        uid,
+        welcomeHtml,
+        { reply_markup: kb },
+        proxyUrl
+      );
+      if (res.ok) {
+        console.log(`[TelegramBot] Welcome message successfully delivered to user ${uid}!`);
+      } else {
+        console.warn(`[TelegramBot] Telegram API returned error delivering welcome to user ${uid}:`, res.description);
+      }
+    } catch (err: any) {
+      console.warn(`[TelegramBot] Failed to send welcome to user ${uid}:`, err.message);
+    }
+  }
+}
+

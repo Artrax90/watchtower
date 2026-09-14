@@ -190,4 +190,11 @@ export async function sendTestNotification(
 }
 
 export { testProxyConnection } from './telegram.js';
-export { startTelegramBot, stopTelegramBot, restartTelegramBot } from './telegramBotService.js';
+export {
+  startTelegramBot,
+  stopTelegramBot,
+  restartTelegramBot,
+  sendWelcomeToUsers,
+  parseUserIds
+} from './telegramBotService.js';
+

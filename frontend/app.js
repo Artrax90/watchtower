@@ -1022,6 +1022,7 @@
         document.getElementById('tgEnabled').checked = tg.is_enabled === 1;
         document.getElementById('tgBotToken').value = tg.config.botToken || '';
         document.getElementById('tgChatId').value = tg.config.chatId || '';
+        document.getElementById('tgUserIds').value = tg.config.userIds || tg.config.allowedUserIds || '';
 
         const typeEl = document.getElementById('tgProxyType');
         const hostEl = document.getElementById('tgProxyHost');
@@ -1067,6 +1068,7 @@
     e.preventDefault();
     const token = document.getElementById('tgBotToken').value.trim();
     const chatId = document.getElementById('tgChatId').value.trim();
+    const userIds = document.getElementById('tgUserIds')?.value.trim() || '';
     const enabled = document.getElementById('tgEnabled').checked ? 1 : 0;
     const proxyCfg = getTgProxyConfig();
     const notifError = document.getElementById('notifError');
@@ -1080,7 +1082,7 @@
           type: 'telegram',
           name: 'Telegram Alerts',
           is_enabled: enabled,
-          config: { botToken: token, chatId, ...proxyCfg }
+          config: { botToken: token, chatId, userIds, ...proxyCfg }
         })
       });
       notifSuccess.textContent = 'Настройки Telegram успешно сохранены!';
@@ -1133,6 +1135,7 @@
   document.getElementById('testTgBtn')?.addEventListener('click', async () => {
     const token = document.getElementById('tgBotToken').value.trim();
     const chatId = document.getElementById('tgChatId').value.trim();
+    const userIds = document.getElementById('tgUserIds')?.value.trim() || '';
     const proxyCfg = getTgProxyConfig();
     const notifError = document.getElementById('notifError');
     const notifSuccess = document.getElementById('notifSuccess');
@@ -1148,7 +1151,7 @@
         method: 'POST',
         body: JSON.stringify({
           type: 'telegram',
-          config: { botToken: token, chatId, ...proxyCfg }
+          config: { botToken: token, chatId, userIds, ...proxyCfg }
         })
       });
       if (res.success) {

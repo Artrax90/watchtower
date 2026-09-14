@@ -1,7 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { dbQueries } from '../db/index.js';
 import { requireAdmin } from './auth.js';
-import { sendTestNotification, testProxyConnection, restartTelegramBot } from '../notifiers/index.js';
+import {
+  sendTestNotification,
+  testProxyConnection,
+  restartTelegramBot,
+  sendWelcomeToUsers,
+  parseUserIds
+} from '../notifiers/index.js';
 import { randomUUID } from 'node:crypto';
 
 export async function notificationRoutes(fastify: FastifyInstance) {
@@ -59,6 +65,22 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Channel configuration object is required' });
       }
 
+      // Check existing channel to find diff in userIds
+      let prevUserIds: string[] = [];
+      if (type.toLowerCase() === 'telegram') {
+        const existing = dbQueries.getNotificationChannels().find((c) => c.type === 'telegram');
+        if (existing) {
+          try {
+            const oldCfg = JSON.parse(existing.config);
+            prevUserIds = parseUserIds(oldCfg.userIds ?? oldCfg.allowedUserIds ?? oldCfg.userId);
+            // If submitted botToken is empty or masked, preserve the existing valid botToken
+            if ((!config.botToken || config.botToken.includes('...')) && oldCfg.botToken) {
+              config.botToken = oldCfg.botToken;
+            }
+          } catch {}
+        }
+      }
+
       const channelId = id || randomUUID();
       dbQueries.saveNotificationChannel({
         id: channelId,
@@ -69,7 +91,16 @@ export async function notificationRoutes(fastify: FastifyInstance) {
       });
 
       if (type.toLowerCase() === 'telegram') {
+        const newUserIds = parseUserIds(config.userIds ?? config.allowedUserIds ?? config.userId);
+        const newlyAdded = newUserIds.filter((uid) => !prevUserIds.includes(uid));
+
         restartTelegramBot();
+
+        if (newlyAdded.length > 0 && config.botToken) {
+          sendWelcomeToUsers(newlyAdded, config).catch((err) => {
+            console.error('[TelegramBot] Failed to send welcome messages:', err);
+          });
+        }
       }
 
       return { success: true, id: channelId };
