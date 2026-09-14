@@ -7,6 +7,7 @@ import { checkTCP } from '../checkers/tcp.js';
 import { checkPing } from '../checkers/ping.js';
 import { checkDNS } from '../checkers/dns.js';
 import { checkSSL } from '../checkers/ssl.js';
+import { detectAuthMechanism } from '../checkers/authDetector.js';
 import { randomUUID } from 'node:crypto';
 
 export async function monitorRoutes(fastify: FastifyInstance) {
@@ -270,6 +271,28 @@ export async function monitorRoutes(fastify: FastifyInstance) {
       }
 
       return { success: true, result };
+    }
+  );
+
+  // Auto-detect authentication mechanism for a given target URL (Admin only)
+  fastify.post<{ Body: { target: string } }>(
+    '/detect-auth',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const { target } = req.body || {};
+      if (!target || !target.trim()) {
+        return reply.status(400).send({ error: 'Укажите URL сервиса для анализа формы авторизации' });
+      }
+
+      try {
+        const detection = await detectAuthMechanism(target.trim());
+        return detection;
+      } catch (err: any) {
+        return reply.status(500).send({
+          success: false,
+          error: `Ошибка анализа авторизации: ${err.message}`
+        });
+      }
     }
   );
 }

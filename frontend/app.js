@@ -553,6 +553,111 @@
     }
   });
 
+  // Smart Auth Auto-Detector Handler
+  const detectAuthBtn = document.getElementById('detectAuthBtn');
+  const detectAuthResult = document.getElementById('detectAuthResult');
+
+  detectAuthBtn?.addEventListener('click', async () => {
+    const targetInput = document.getElementById('monitorTarget')?.value.trim();
+    if (!targetInput) {
+      if (detectAuthResult) {
+        detectAuthResult.style.display = 'block';
+        detectAuthResult.className = 'smart-auth-result-box error';
+        detectAuthResult.innerHTML = '<i data-lucide="alert-circle" style="width:14px;height:14px;vertical-align:middle"></i> Сначала введите адрес портала или страницы входа в поле <b>«Адрес (URL или Hostname)»</b> выше.';
+        lucide.createIcons();
+      }
+      document.getElementById('monitorTarget')?.focus();
+      return;
+    }
+
+    const originalBtnHtml = detectAuthBtn.innerHTML;
+    detectAuthBtn.disabled = true;
+    detectAuthBtn.innerHTML = '<i data-lucide="refresh-cw" class="spin" style="width:13px;height:13px"></i> <span>Сканируем форму...</span>';
+    lucide.createIcons();
+
+    if (detectAuthResult) {
+      detectAuthResult.style.display = 'block';
+      detectAuthResult.className = 'smart-auth-result-box loading';
+      detectAuthResult.innerHTML = '<i data-lucide="refresh-cw" class="spin" style="width:14px;height:14px"></i> Выполняем GET-запрос к сайту, поиск формы авторизации и синтетическую проверку ответа...';
+      lucide.createIcons();
+    }
+
+    try {
+      const res = await api('/monitors/detect-auth', {
+        method: 'POST',
+        body: JSON.stringify({ target: targetInput })
+      });
+
+      if (res && res.success) {
+        // Auto-apply detected values to the form!
+        if (res.httpMethod) document.getElementById('monitorHttpMethod').value = res.httpMethod;
+        if (res.expectedStatus) document.getElementById('monitorExpectedStatus').value = res.expectedStatus;
+        if (res.keyword) document.getElementById('monitorKeyword').value = res.keyword;
+        if (res.httpBody) document.getElementById('monitorHttpBody').value = res.httpBody;
+        if (res.httpHeaders) document.getElementById('monitorHttpHeaders').value = res.httpHeaders;
+        if (res.followRedirects !== undefined) {
+          document.getElementById('monitorFollowRedirects').checked = res.followRedirects !== 0;
+        }
+
+        // If target URL needs update (e.g. redirected or found specific action)
+        let targetNotice = '';
+        if (res.targetUrl && res.targetUrl !== targetInput && res.strategy === 'form_post') {
+          targetNotice = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(34,197,94,0.3);font-size:10px">` +
+            `📍 Адрес формы: <code>${res.targetUrl}</code> ` +
+            `<button type="button" class="btn btn-secondary" id="applyTargetUrlBtn" style="padding:2px 6px;font-size:9.5px;margin-left:6px">Обновить URL в карточке</button></div>`;
+        }
+
+        detectAuthResult.className = 'smart-auth-result-box success';
+        detectAuthResult.innerHTML = `
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <i data-lucide="check-circle" style="width:16px;height:16px;color:var(--green);flex-shrink:0;margin-top:2px"></i>
+            <div>
+              <b style="color:var(--green)">Форма авторизации успешно определена и настройки применены!</b>
+              <div style="margin-top:4px;color:var(--text)">${res.summary}</div>
+              <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px">
+                <span class="badge" style="background:rgba(89,105,232,0.15);color:var(--primary);font-size:9.5px">Метод: ${res.httpMethod}</span>
+                <span class="badge" style="background:rgba(34,197,94,0.15);color:var(--green);font-size:9.5px">Ожидаемый статус: ${res.expectedStatus}</span>
+                ${res.keyword ? `<span class="badge" style="background:rgba(236,157,34,0.15);color:var(--amber);font-size:9.5px">Ключевое слово: «${res.keyword}»</span>` : ''}
+              </div>
+              ${targetNotice}
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+
+        document.getElementById('applyTargetUrlBtn')?.addEventListener('click', () => {
+          document.getElementById('monitorTarget').value = res.targetUrl;
+          showToast('Адрес монитора обновлён');
+        });
+
+        showToast('Параметры авторизации автоматически определены!');
+      } else {
+        detectAuthResult.className = 'smart-auth-result-box error';
+        detectAuthResult.innerHTML = `
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <i data-lucide="alert-triangle" style="width:16px;height:16px;color:var(--red);flex-shrink:0;margin-top:2px"></i>
+            <div>
+              <b style="color:var(--red)">Форма авторизации не найдена автоматически</b>
+              <div style="margin-top:3px">${res.summary || 'Сервер не вернул форму входа по указанному адресу.'}</div>
+              <small style="color:var(--muted);display:block;margin-top:4px">
+                💡 Совет: попробуйте указать прямую ссылку на страницу логина (например, <code>/login</code> или <code>/auth</code>), либо настройте поля вручную ниже.
+              </small>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+      }
+    } catch (err) {
+      detectAuthResult.className = 'smart-auth-result-box error';
+      detectAuthResult.innerHTML = `<i data-lucide="alert-circle" style="width:14px;height:14px;vertical-align:middle"></i> Ошибка автоопределения: ${err.message}`;
+      lucide.createIcons();
+    } finally {
+      detectAuthBtn.disabled = false;
+      detectAuthBtn.innerHTML = originalBtnHtml;
+      lucide.createIcons();
+    }
+  });
+
   // Add Monitor Button Handler
   document.getElementById('addMonitor')?.addEventListener('click', () => {
     if (!authState.authenticated) {
@@ -588,6 +693,10 @@
 
     if (advancedHttpBody) advancedHttpBody.style.display = 'none';
     if (advancedHttpIcon) advancedHttpIcon.classList.remove('open');
+    if (detectAuthResult) {
+      detectAuthResult.style.display = 'none';
+      detectAuthResult.innerHTML = '';
+    }
 
     openModal(monitorModal);
   });
@@ -962,6 +1071,10 @@
     if (advancedHttpIcon) {
       if (hasAdvancedConfig) advancedHttpIcon.classList.add('open');
       else advancedHttpIcon.classList.remove('open');
+    }
+    if (detectAuthResult) {
+      detectAuthResult.style.display = 'none';
+      detectAuthResult.innerHTML = '';
     }
 
     // Parse multi-types
