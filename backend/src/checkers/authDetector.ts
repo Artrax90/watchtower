@@ -161,10 +161,10 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         lowerLoc.includes('identity') ||
         lowerLoc.includes('saml') ||
         lowerLoc.includes('signin') ||
-        new URL(resolvedRedirect).hostname !== new URL(targetUrl).hostname;
+        lowerLoc.includes('passport') ||
+        lowerLoc.includes('id.');
 
       if (isAuthRedirect) {
-        // Extract meaningful keyword from redirect (path or domain)
         const redirectUrlObj = new URL(resolvedRedirect);
         const keywordGuess = redirectUrlObj.hostname !== new URL(targetUrl).hostname
           ? redirectUrlObj.hostname
@@ -173,7 +173,7 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         return {
           success: true,
           strategy: 'redirect_flow',
-          targetUrl,
+          targetUrl: resolvedRedirect,
           httpMethod: 'GET',
           expectedStatus: `${initialRes.status}`,
           followRedirects: 0,
@@ -232,9 +232,12 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
 
     // Step 3: Check Client-side HTML meta refresh or inline JS redirects
     const metaRefreshMatch = pageHtml.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]+content=["']?\d+;\s*url=([^"'>\s]+)["']?/i);
-    if (metaRefreshMatch && metaRefreshMatch[1]) {
+    const jsRedirectMatch = pageHtml.match(/(?:window\.|document\.|top\.)?location(?:\.href|\.replace)?\s*=\s*["']([^"']+)["']/i);
+    const clientRedirectRaw = (metaRefreshMatch && metaRefreshMatch[1]) || (jsRedirectMatch && jsRedirectMatch[1]);
+
+    if (clientRedirectRaw) {
       try {
-        const clientRedirectUrl = new URL(metaRefreshMatch[1], finalUrl).href;
+        const clientRedirectUrl = new URL(clientRedirectRaw, finalUrl).href;
         const destRes = await fetch(clientRedirectUrl, {
           method: 'GET',
           headers: { 'User-Agent': BROWSER_USER_AGENT },
@@ -248,24 +251,33 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       } catch {}
     }
 
-    // Step 4: Search for HTML login form with password input
+    // Step 4: Search for HTML login form (both single-step with password and multi-step forms)
     const formRegex = /<form\b([\s\S]*?)<\/form>/gi;
     let formMatch: RegExpExecArray | null;
     let bestForm: {
       actionUrl: string;
       method: string;
       usernameField: string;
-      passwordField: string;
+      passwordField?: string;
+      isMultiStep?: boolean;
       csrfToken?: { name: string; value: string };
     } | null = null;
+
+    const pageTitleMatch = pageHtml.match(/<title>([^<]+)<\/title>/i);
+    const pageTitle = pageTitleMatch ? pageTitleMatch[1].trim() : '';
+    const isAuthTitle = /войти|вход|авториз|login|sign in|passport/i.test(pageTitle);
 
     while ((formMatch = formRegex.exec(pageHtml)) !== null) {
       const formContent = formMatch[1];
       const formOpenTag = formContent.split('>')[0];
 
-      // Check if this form contains a password input
       const hasPassword = /<input[^>]+type=["']?password["']?/i.test(formContent);
-      if (!hasPassword) continue;
+      const isFormMarkedAuth =
+        /login|auth|signin|passport/i.test(formOpenTag) ||
+        isAuthTitle ||
+        /<input[^>]+(?:name|id|data-testid)=["']?(?:login|username|user|email|account|identifier)/i.test(formContent);
+
+      if (!hasPassword && !isFormMarkedAuth) continue;
 
       // Extract form action
       const actionMatch = formOpenTag.match(/action=["']([^"']*)["']/i);
@@ -286,13 +298,13 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       // Extract password field name
       const passNameMatch = formContent.match(/<input[^>]+type=["']?password["'][^>]*name=["']?([^"'\s>]+)["']?/i) ||
                             formContent.match(/<input[^>]+name=["']?([^"'\s>]+)["'][^>]*type=["']?password["']?/i);
-      const passwordField = passNameMatch ? passNameMatch[1] : 'password';
+      const passwordField = passNameMatch ? passNameMatch[1] : undefined;
 
       // Extract username/login field name
       const userNameMatch =
-        formContent.match(/<input[^>]+name=["']?([^"'\s>]*(?:user|login|email|account|name)[^"'\s>]*)["']?/i) ||
-        formContent.match(/<input[^>]+type=["']?(?:text|email)["'][^>]*name=["']?([^"'\s>]+)["']?/i);
-      const usernameField = userNameMatch ? userNameMatch[1] : 'username';
+        formContent.match(/<input[^>]+name=["']?([^"'\s>]*(?:user|login|email|account|name|phone)[^"'\s>]*)["']?/i) ||
+        formContent.match(/<input[^>]+type=["']?(?:text|email|tel)["'][^>]*name=["']?([^"'\s>]+)["']?/i);
+      const usernameField = userNameMatch ? userNameMatch[1] : 'login';
 
       // Extract CSRF token if present
       const csrfMatch = formContent.match(
@@ -308,110 +320,127 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         method,
         usernameField,
         passwordField,
+        isMultiStep: !hasPassword,
         csrfToken
       };
-      break; // Found the primary login form
+      break;
     }
 
-    // If HTML form found -> Execute synthetic probe
+    // If HTML form found -> Execute synthetic probe or verify form screen
     if (bestForm) {
-      const probeBodyObj: Record<string, string> = {
-        [bestForm.usernameField]: 'watchtower_probe_check',
-        [bestForm.passwordField]: 'probe_password_123'
-      };
-      if (bestForm.csrfToken) {
-        probeBodyObj[bestForm.csrfToken.name] = bestForm.csrfToken.value;
-      }
+      if (bestForm.passwordField) {
+        // Standard single-step login form with password
+        const probeBodyObj: Record<string, string> = {
+          [bestForm.usernameField]: 'watchtower_probe_check',
+          [bestForm.passwordField]: 'probe_password_123'
+        };
+        if (bestForm.csrfToken) {
+          probeBodyObj[bestForm.csrfToken.name] = bestForm.csrfToken.value;
+        }
 
-      // Test with JSON first, then urlencoded form
-      const probeController = new AbortController();
-      const probeTimer = setTimeout(() => probeController.abort(), timeoutMs);
+        const probeController = new AbortController();
+        const probeTimer = setTimeout(() => probeController.abort(), timeoutMs);
 
-      let probeRes: Response | null = null;
-      let probeText = '';
-      let formatUsed: 'json' | 'form' = 'json';
+        let probeRes: Response | null = null;
+        let probeText = '';
+        let formatUsed: 'json' | 'form' = 'json';
 
-      try {
-        probeRes = await fetch(bestForm.actionUrl, {
-          method: bestForm.method,
-          headers: {
-            'User-Agent': BROWSER_USER_AGENT,
-            'Content-Type': 'application/json',
-            Accept: 'application/json, text/plain, */*'
-          },
-          body: JSON.stringify(probeBodyObj),
-          signal: probeController.signal
-        });
-        probeText = await probeRes.text();
-
-        // If JSON was rejected (415 Unsupported Media Type or 404), try URL-encoded form
-        if (probeRes.status === 415 || (probeRes.status === 404 && bestForm.actionUrl !== finalUrl)) {
-          const formParams = new URLSearchParams(probeBodyObj);
+        try {
           probeRes = await fetch(bestForm.actionUrl, {
             method: bestForm.method,
             headers: {
               'User-Agent': BROWSER_USER_AGENT,
-              'Content-Type': 'application/x-www-form-urlencoded',
-              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              'Content-Type': 'application/json',
+              Accept: 'application/json, text/plain, */*'
             },
-            body: formParams.toString(),
+            body: JSON.stringify(probeBodyObj),
             signal: probeController.signal
           });
           probeText = await probeRes.text();
-          formatUsed = 'form';
+
+          if (probeRes.status === 415 || (probeRes.status === 404 && bestForm.actionUrl !== finalUrl)) {
+            const formParams = new URLSearchParams(probeBodyObj);
+            probeRes = await fetch(bestForm.actionUrl, {
+              method: bestForm.method,
+              headers: {
+                'User-Agent': BROWSER_USER_AGENT,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              },
+              body: formParams.toString(),
+              signal: probeController.signal
+            });
+            probeText = await probeRes.text();
+            formatUsed = 'form';
+          }
+        } catch (err: any) {
+        } finally {
+          clearTimeout(probeTimer);
         }
-      } catch (err: any) {
-        // Form endpoint probe error
-      } finally {
-        clearTimeout(probeTimer);
+
+        let detectedKeyword: string | undefined;
+        let expectedStatus = '401';
+
+        if (probeRes) {
+          expectedStatus = `${probeRes.status}`;
+          try {
+            const json = JSON.parse(probeText);
+            const err = extractErrorFromJson(json);
+            if (err) detectedKeyword = err;
+          } catch {
+            const err = extractErrorFromHtml(probeText);
+            if (err) detectedKeyword = err;
+          }
+        }
+
+        const generatedBody =
+          formatUsed === 'json'
+            ? JSON.stringify({ [bestForm.usernameField]: 'watchtower_probe', [bestForm.passwordField]: 'dummy_password' }, null, 2)
+            : `${bestForm.usernameField}=watchtower_probe&${bestForm.passwordField}=dummy_password`;
+
+        return {
+          success: true,
+          strategy: 'form_post',
+          targetUrl: bestForm.actionUrl,
+          httpMethod: bestForm.method,
+          expectedStatus: expectedStatus === '200' ? '200,401' : expectedStatus,
+          keyword: detectedKeyword,
+          httpBody: generatedBody,
+          followRedirects: 1,
+          summary: `Найдена форма входа (${bestForm.method} ${new URL(bestForm.actionUrl).pathname}). ` +
+                   `Сервер ответил кодом ${expectedStatus}` +
+                   (detectedKeyword ? ` с сообщением: «${detectedKeyword}»` : '.'),
+          details: {
+            formAction: bestForm.actionUrl,
+            usernameField: bestForm.usernameField,
+            passwordField: bestForm.passwordField,
+            detectedStatus: probeRes?.status,
+            errorSample: detectedKeyword
+          }
+        };
+      } else {
+        // Multi-step form (first screen username/phone, followed by password screen)
+        const kw = pageTitle || bestForm.usernameField;
+        return {
+          success: true,
+          strategy: 'form_post',
+          targetUrl: finalUrl,
+          httpMethod: 'GET',
+          expectedStatus: '200',
+          keyword: kw,
+          followRedirects: 1,
+          summary: `Обнаружена страница авторизации (${finalUrl}). Найдена форма ввода учётных данных (код 200 + ключевое слово «${kw}»).`,
+          details: {
+            formAction: finalUrl,
+            usernameField: bestForm.usernameField,
+            detectedStatus: 200,
+            portalTitle: pageTitle
+          }
+        };
       }
-
-      let detectedKeyword: string | undefined;
-      let expectedStatus = '401';
-
-      if (probeRes) {
-        expectedStatus = `${probeRes.status}`;
-
-        // Try extracting error from JSON
-        try {
-          const json = JSON.parse(probeText);
-          const err = extractErrorFromJson(json);
-          if (err) detectedKeyword = err;
-        } catch {
-          // HTML response
-          const err = extractErrorFromHtml(probeText);
-          if (err) detectedKeyword = err;
-        }
-      }
-
-      const generatedBody =
-        formatUsed === 'json'
-          ? JSON.stringify({ [bestForm.usernameField]: 'watchtower_probe', [bestForm.passwordField]: 'dummy_password' }, null, 2)
-          : `${bestForm.usernameField}=watchtower_probe&${bestForm.passwordField}=dummy_password`;
-
-      return {
-        success: true,
-        strategy: 'form_post',
-        targetUrl: bestForm.actionUrl,
-        httpMethod: bestForm.method,
-        expectedStatus: expectedStatus === '200' ? '200,401' : expectedStatus,
-        keyword: detectedKeyword,
-        httpBody: generatedBody,
-        followRedirects: 1,
-        summary: `Найдена форма входа (${bestForm.method} ${new URL(bestForm.actionUrl).pathname}). ` +
-                 `Сервер ответил кодом ${expectedStatus}` +
-                 (detectedKeyword ? ` с сообщением: «${detectedKeyword}»` : '.'),
-        details: {
-          formAction: bestForm.actionUrl,
-          usernameField: bestForm.usernameField,
-          passwordField: bestForm.passwordField,
-          detectedStatus: probeRes?.status,
-          errorSample: detectedKeyword
-        }
-      };
     }
 
-    // Step 5: SPA Auth Discovery (Keycloak, OIDC, SSO config endpoints & bundle scanning)
+    // Step 5: SPA Auth Discovery (Keycloak, OIDC, SSO config endpoints & bundle/inline scanning)
     const targetUrlObj = new URL(finalUrl);
 
     // List of standard SPA auth config endpoints
@@ -428,6 +457,107 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       '/oauth2/.well-known/openid-configuration'
     ];
 
+    // Scan inline scripts or JSON for Keycloak/OIDC configs
+    let keycloakConfig: { domain: string; realm: string; clientId: string } | null = null;
+
+    // 1. Check <script id="environment"> (Standard in Keycloak Account Console)
+    const envMatch = pageHtml.match(/<script[^>]+id=["']environment["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (envMatch) {
+      try {
+        const envData = JSON.parse(envMatch[1].trim());
+        if (envData && envData.realm) {
+          keycloakConfig = {
+            domain: (envData.serverBaseUrl || envData.authServerUrl || envData.authUrl || '').replace(/\/$/, ''),
+            realm: envData.realm,
+            clientId: envData.clientId || 'account'
+          };
+        }
+      } catch {}
+    }
+
+    // 2. Scan inline scripts for Keycloak/OIDC configs
+    if (!keycloakConfig) {
+      const inlineScripts = pageHtml.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi) || [];
+      for (const s of inlineScripts) {
+        const mUrl = s.match(/["']?(?:serverBaseUrl|authServerUrl|authUrl|auth-server-url|authority|domain|url|issuer)["']?\s*[:=]\s*["'](https?:\/\/[^"'\s]+)["']/i);
+        const mRealm = s.match(/["']?realm["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
+        const mClient = s.match(/["']?(?:clientId|client_id|resource)["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
+        if (mUrl && mRealm) {
+          keycloakConfig = {
+            domain: mUrl[1].replace(/\/$/, ''),
+            realm: mRealm[1],
+            clientId: mClient ? mClient[1] : 'account'
+          };
+          break;
+        }
+      }
+    }
+
+    // 3. Check if current URL path directly points to a Keycloak realm
+    if (!keycloakConfig) {
+      const realmPathMatch = targetUrlObj.pathname.match(/(.*)\/realms\/([a-zA-Z0-9_\-]+)/i);
+      if (realmPathMatch) {
+        keycloakConfig = {
+          domain: `${targetUrlObj.origin}${realmPathMatch[1]}`,
+          realm: realmPathMatch[2],
+          clientId: 'account'
+        };
+      }
+    }
+
+    if (keycloakConfig && keycloakConfig.domain && keycloakConfig.realm) {
+      const { domain, realm, clientId } = keycloakConfig;
+      const realmUrl = `${domain}/realms/${realm}`;
+      const ssoLoginUrl = `${domain}/realms/${realm}/protocol/openid-connect/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(targetUrl)}&response_type=code&scope=openid`;
+
+      let portalTitle = '';
+      let realmVerified = false;
+
+      try {
+        const realmCheck = await fetch(realmUrl, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json' },
+          signal: AbortSignal.timeout(3000)
+        });
+        if (realmCheck.ok) realmVerified = true;
+      } catch {}
+
+      try {
+        const loginCheck = await fetch(ssoLoginUrl, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT },
+          signal: AbortSignal.timeout(3500)
+        });
+        if (loginCheck.ok) {
+          const html = await loginCheck.text();
+          const tMatch = html.match(/<title>([^<]+)<\/title>/i);
+          if (tMatch && tMatch[1]) {
+            portalTitle = tMatch[1].trim();
+          }
+        }
+      } catch {}
+
+      const chosenKeyword = portalTitle || (realmVerified ? 'public_key' : realm);
+
+      return {
+        success: true,
+        strategy: 'sso_gateway',
+        targetUrl: ssoLoginUrl,
+        httpMethod: 'GET',
+        expectedStatus: '200',
+        keyword: chosenKeyword,
+        followRedirects: 1,
+        summary: `Обнаружен шлюз авторизации Keycloak SSO: ${realmUrl} (клиент: «${clientId}»). ` +
+                 `Проверка настроена автоматически.`,
+        details: {
+          ssoRealm: realm,
+          ssoDomain: domain,
+          ssoLoginUrl,
+          realmUrl,
+          portalTitle,
+          detectedStatus: 200
+        }
+      };
+    }
+
     // Check script files in HTML to discover custom auth endpoints or configs
     const scriptSrcs = [...pageHtml.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]);
     for (const src of scriptSrcs.slice(0, 5)) {
@@ -439,7 +569,6 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         });
         if (sRes.ok) {
           const sText = await sRes.text();
-          // Look for /api/ paths mentioning auth, tenant, sso, etc.
           const apiMatches = sText.match(/\/api\/[a-zA-Z0-9_\-\/]*(?:tenant|auth|oidc|sso)[a-zA-Z0-9_\-\/]*/gi) || [];
           for (const m of apiMatches) {
             if (!spaEndpoints.includes(m)) {
@@ -474,7 +603,6 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       const data = resItem.json;
       if (!data || typeof data !== 'object') continue;
 
-      // Check Keycloak format (e.g. { type: 'keycloak', realm: 'ph', client_id: 'ph-portal', domain: 'https://sso...' })
       const isKeycloak =
         data.type === 'keycloak' ||
         data.realm ||
@@ -491,7 +619,6 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
           const realmUrl = `${domain}${uri}/realms/${realm}`;
           const ssoLoginUrl = `${domain}${uri}/realms/${realm}/protocol/openid-connect/auth?client_id=${encodeURIComponent(clientId || 'account')}&redirect_uri=${encodeURIComponent(targetUrl)}&response_type=code&scope=openid`;
 
-          // Verify the realm and login URLs
           let portalTitle = '';
           let realmVerified = false;
 
@@ -544,7 +671,6 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         }
       }
 
-      // Check generic OIDC / OAuth2 format (e.g. { issuer: '...', authorization_endpoint: '...' })
       if (data.authorization_endpoint || data.issuer) {
         const authEndpoint = data.authorization_endpoint || data.issuer;
         return {
@@ -564,7 +690,7 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       }
     }
 
-    // Step 6: Check HTML Login Links (<a href="...">)
+    // Step 6: Check HTML Login Links and Buttons (<a href="..."> or buttons)
     const linkRegex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     let linkMatch: RegExpExecArray | null;
     const candidateLinks: string[] = [];
@@ -578,43 +704,60 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
         text.includes('войти') ||
         text.includes('вход') ||
         text.includes('авториз') ||
+        text.includes('личный кабинет') ||
+        text.includes('вход в систему') ||
+        text.includes('для клиентов') ||
         text.includes('sign in') ||
         text.includes('log in') ||
         text.includes('login') ||
         lowerHref.includes('/login') ||
         lowerHref.includes('/auth') ||
         lowerHref.includes('/signin') ||
-        lowerHref.includes('/sso');
+        lowerHref.includes('/sign_in') ||
+        lowerHref.includes('/sign-in') ||
+        lowerHref.includes('/log_in') ||
+        lowerHref.includes('/log-in') ||
+        lowerHref.includes('/sso') ||
+        lowerHref.includes('/oauth') ||
+        lowerHref.includes('passport.') ||
+        lowerHref.includes('id.');
 
       if (isLoginLink && !href.startsWith('#') && !href.startsWith('javascript:')) {
         candidateLinks.push(href);
       }
     }
 
-    for (const cl of candidateLinks.slice(0, 3)) {
+    for (const cl of candidateLinks.slice(0, 4)) {
       try {
         const resolvedLink = new URL(cl, finalUrl).href;
         if (resolvedLink !== finalUrl) {
           const linkRes = await fetch(resolvedLink, {
             headers: { 'User-Agent': BROWSER_USER_AGENT },
-            signal: AbortSignal.timeout(3000)
+            signal: AbortSignal.timeout(3500)
           });
           if (linkRes.ok) {
             const linkHtml = await linkRes.text();
-            if (linkHtml.includes('type="password"') || linkHtml.includes("type='password'")) {
+            if (
+              linkHtml.includes('type="password"') ||
+              linkHtml.includes("type='password'") ||
+              /login|auth|signin|passport/i.test(linkHtml)
+            ) {
+              const tMatch = linkHtml.match(/<title>([^<]+)<\/title>/i);
+              const kw = tMatch && tMatch[1] ? tMatch[1].trim() : 'password';
               return {
                 success: true,
                 strategy: 'sso_gateway',
                 targetUrl: resolvedLink,
                 httpMethod: 'GET',
                 expectedStatus: '200',
-                keyword: 'password',
+                keyword: kw,
                 followRedirects: 1,
                 summary: `Обнаружена страница авторизации по ссылке на сайте: ${resolvedLink}. ` +
-                         `Найдена форма ввода пароля. Проверка настроена автоматически!`,
+                         `Найдена форма входа. Проверка настроена автоматически!`,
                 details: {
                   ssoLoginUrl: resolvedLink,
-                  detectedStatus: linkRes.status
+                  detectedStatus: linkRes.status,
+                  portalTitle: kw
                 }
               };
             }
@@ -623,7 +766,129 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       } catch {}
     }
 
-    // Step 7: Check standard REST API login endpoints
+    // Step 7: Probe Common Web Auth Paths (Essential for portals where / is 404, 403, or landing page like cms.bmstu.ru)
+    const commonPortalAuthPaths = [
+      '/cp',
+      '/admin',
+      '/login',
+      '/admin/login',
+      '/auth',
+      '/auth/login',
+      '/signin',
+      '/users/sign_in',
+      '/user/login',
+      '/oauth/authorize',
+      '/oauth/login',
+      '/dashboard',
+      '/portal',
+      '/web'
+    ];
+
+    for (const path of commonPortalAuthPaths) {
+      try {
+        const probeUrl = new URL(path, targetUrlObj.origin).href;
+        const probeRes = await fetch(probeUrl, {
+          method: 'GET',
+          headers: { 'User-Agent': BROWSER_USER_AGENT },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(2500)
+        });
+
+        // Did this path redirect? Follow the redirect chain up to 3 hops!
+        if ([301, 302, 303, 307, 308].includes(probeRes.status)) {
+          let currentLoc = probeRes.headers.get('location');
+          let hops = 0;
+          let hopUrl = probeUrl;
+
+          while (currentLoc && hops < 3) {
+            hops++;
+            hopUrl = new URL(currentLoc, hopUrl).href;
+            const lowerHop = hopUrl.toLowerCase();
+
+            // Check if this hop reached an auth server (SSO, OAuth, Keycloak, etc.)
+            const isHopAuth =
+              lowerHop.includes('sso') ||
+              lowerHop.includes('oauth') ||
+              lowerHop.includes('auth') ||
+              lowerHop.includes('login') ||
+              lowerHop.includes('keycloak');
+
+            if (isHopAuth) {
+              // Try fetching the final auth destination to verify title
+              let destTitle = '';
+              try {
+                const destRes = await fetch(hopUrl, {
+                  headers: { 'User-Agent': BROWSER_USER_AGENT },
+                  signal: AbortSignal.timeout(3000)
+                });
+                if (destRes.ok) {
+                  const destHtml = await destRes.text();
+                  const tMatch = destHtml.match(/<title>([^<]+)<\/title>/i);
+                  if (tMatch && tMatch[1]) destTitle = tMatch[1].trim();
+                }
+              } catch {}
+
+              const kw = destTitle || new URL(hopUrl).hostname;
+              return {
+                success: true,
+                strategy: 'sso_gateway',
+                targetUrl: hopUrl,
+                httpMethod: 'GET',
+                expectedStatus: '200',
+                keyword: kw,
+                followRedirects: 1,
+                summary: `Обнаружен вход в панель управления (${path}) с перенаправлением на шлюз: ${hopUrl}`,
+                details: {
+                  ssoLoginUrl: hopUrl,
+                  portalTitle: destTitle,
+                  detectedStatus: 200
+                }
+              };
+            }
+
+            // Otherwise check next hop
+            try {
+              const nextRes = await fetch(hopUrl, {
+                headers: { 'User-Agent': BROWSER_USER_AGENT },
+                redirect: 'manual',
+                signal: AbortSignal.timeout(2000)
+              });
+              if ([301, 302, 303, 307, 308].includes(nextRes.status)) {
+                currentLoc = nextRes.headers.get('location');
+              } else {
+                currentLoc = null;
+              }
+            } catch {
+              break;
+            }
+          }
+        } else if (probeRes.ok) {
+          // If 200, check if it contains a login form
+          const html = await probeRes.text();
+          if (html.includes('type="password"') || html.includes("type='password'") || /login|auth|signin/i.test(html)) {
+            const tMatch = html.match(/<title>([^<]+)<\/title>/i);
+            const kw = tMatch && tMatch[1] ? tMatch[1].trim() : 'password';
+            return {
+              success: true,
+              strategy: 'sso_gateway',
+              targetUrl: probeUrl,
+              httpMethod: 'GET',
+              expectedStatus: '200',
+              keyword: kw,
+              followRedirects: 1,
+              summary: `Обнаружена страница входа (${path}). Найдена форма ввода пароля.`,
+              details: {
+                ssoLoginUrl: probeUrl,
+                detectedStatus: probeRes.status,
+                portalTitle: kw
+              }
+            };
+          }
+        }
+      } catch {}
+    }
+
+    // Step 8: Check standard REST API login endpoints
     const commonApiPaths = [
       '/api/auth/login',
       '/api/login',

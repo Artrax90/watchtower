@@ -599,35 +599,47 @@
           document.getElementById('monitorFollowRedirects').checked = res.followRedirects !== 0;
         }
 
-        // If target URL needs update or SSO gateway was detected
+        const originalInputTarget = targetInput;
+        const finalAuthTarget = (res.strategy === 'sso_gateway' && res.details?.ssoLoginUrl)
+          ? res.details.ssoLoginUrl
+          : (res.targetUrl || targetInput);
+
+        // Automatically update the monitor target to the discovered auth endpoint
+        if (finalAuthTarget && finalAuthTarget !== targetInput) {
+          document.getElementById('monitorTarget').value = finalAuthTarget;
+        }
+
+        // If target URL was updated or SSO gateway was detected
         let targetNotice = '';
-        if (res.strategy === 'sso_gateway') {
-          const loginUrl = res.details?.ssoLoginUrl || res.targetUrl;
+        if (finalAuthTarget !== originalInputTarget) {
           const realmUrl = res.details?.realmUrl;
           targetNotice = `
-            <div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(34,197,94,0.3);font-size:10.5px">
-              <div style="margin-bottom:5px;font-weight:600;color:var(--text)">📍 Шлюз авторизации определен. Выберите адрес для мониторинга:</div>
-              <div style="display:flex;flex-direction:column;gap:5px">
-                <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);padding:5px 8px;border-radius:4px;gap:8px">
-                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px">
-                    <span style="color:var(--text);font-weight:600">Страница входа:</span> <code style="font-size:9.5px">${escapeHtml(loginUrl)}</code>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(34,197,94,0.3);font-size:11px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px">
+                <div style="overflow:hidden">
+                  <div style="color:var(--green);font-weight:600">✓ Адрес монитора обновлен на страницу авторизации:</div>
+                  <div style="font-size:10px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">
+                    <code>${escapeHtml(finalAuthTarget)}</code>
                   </div>
-                  <button type="button" class="btn btn-secondary" id="applySsoLoginBtn" style="padding:2px 8px;font-size:10px;flex-shrink:0">Установить URL входа</button>
                 </div>
-                ${realmUrl ? `
-                <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);padding:5px 8px;border-radius:4px;gap:8px">
-                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px">
-                    <span style="color:var(--text);font-weight:600">Realm API (JSON):</span> <code style="font-size:9.5px">${escapeHtml(realmUrl)}</code>
-                  </div>
-                  <button type="button" class="btn btn-secondary" id="applySsoRealmBtn" style="padding:2px 8px;font-size:10px;flex-shrink:0">Установить Realm API</button>
-                </div>` : ''}
+                <button type="button" class="btn btn-secondary" id="revertTargetBtn" style="padding:3px 8px;font-size:10px;flex-shrink:0">
+                  Вернуть исходный адрес
+                </button>
               </div>
+              ${realmUrl ? `
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px;margin-top:4px">
+                <div style="overflow:hidden">
+                  <div style="color:var(--text);font-weight:600">Альтернатива (Realm API JSON):</div>
+                  <div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">
+                    <code>${escapeHtml(realmUrl)}</code>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-secondary" id="applySsoRealmBtn" style="padding:3px 8px;font-size:10px;flex-shrink:0">
+                  Установить Realm API
+                </button>
+              </div>` : ''}
             </div>
           `;
-        } else if (res.targetUrl && res.targetUrl !== targetInput) {
-          targetNotice = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(34,197,94,0.3);font-size:10px">` +
-            `📍 Адрес формы: <code>${escapeHtml(res.targetUrl)}</code> ` +
-            `<button type="button" class="btn btn-secondary" id="applyTargetUrlBtn" style="padding:2px 6px;font-size:9.5px;margin-left:6px">Обновить URL в карточке</button></div>`;
         }
 
         const titleText = res.strategy === 'sso_gateway'
@@ -652,17 +664,9 @@
         `;
         lucide.createIcons();
 
-        document.getElementById('applyTargetUrlBtn')?.addEventListener('click', () => {
-          document.getElementById('monitorTarget').value = res.targetUrl;
-          showToast('Адрес монитора обновлён');
-        });
-
-        document.getElementById('applySsoLoginBtn')?.addEventListener('click', () => {
-          const loginUrl = res.details?.ssoLoginUrl || res.targetUrl;
-          document.getElementById('monitorTarget').value = loginUrl;
-          if (res.keyword) document.getElementById('monitorKeyword').value = res.keyword;
-          document.getElementById('monitorExpectedStatus').value = res.expectedStatus || '200';
-          showToast('Установлен адрес страницы входа SSO');
+        document.getElementById('revertTargetBtn')?.addEventListener('click', () => {
+          document.getElementById('monitorTarget').value = originalInputTarget;
+          showToast('Восстановлен исходный адрес сайта');
         });
 
         document.getElementById('applySsoRealmBtn')?.addEventListener('click', () => {

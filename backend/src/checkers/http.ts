@@ -110,7 +110,86 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
     if (target.keyword) {
       const locationHeader = response.headers.get('location') || '';
       const matchSource = `${bodyText} Location: ${locationHeader}`;
-      if (!matchSource.toLowerCase().includes(target.keyword.toLowerCase())) {
+      let isKeywordFound = matchSource.toLowerCase().includes(target.keyword.toLowerCase());
+
+      // If not found in HTML shell, check if target is an SPA that delegates auth to an SSO gateway
+      if (!isKeywordFound && statusCode === 200 && (bodyText.includes('id="root"') || bodyText.includes('id="app"') || bodyText.includes('class="login-pf"') || bodyText.includes('keycloak'))) {
+        try {
+          let domain = '';
+          let realm = '';
+          let clientId = 'account';
+
+          // 1. Check <script id="environment"> first if present
+          const envMatch = bodyText.match(/<script[^>]+id=["']environment["'][^>]*>([\s\S]*?)<\/script>/i);
+          if (envMatch) {
+            try {
+              const envJson = JSON.parse(envMatch[1].trim());
+              realm = envJson.realm || '';
+              domain = (envJson.serverBaseUrl || envJson.authServerUrl || envJson.authUrl || '').replace(/\/$/, '');
+              clientId = envJson.clientId || 'account';
+            } catch {}
+          }
+
+          // 2. Check /api/tenants/auth/
+          if (!realm || !domain) {
+            const tenantUrl = new URL('/api/tenants/auth/', url).href;
+            const tenantRes = await fetch(tenantUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Watchtower/1.0' },
+              signal: AbortSignal.timeout(2500)
+            });
+            if (tenantRes.ok) {
+              const tenantJson = (await tenantRes.json()) as any;
+              if (tenantJson && tenantJson.domain && tenantJson.realm) {
+                domain = String(tenantJson.domain).replace(/\/$/, '');
+                realm = tenantJson.realm;
+                clientId = tenantJson.client_id || 'account';
+              }
+            }
+          }
+
+          // 3. Check realm in URL path
+          if (!realm || !domain) {
+            const realmPathMatch = new URL(url).pathname.match(/(.*)\/realms\/([a-zA-Z0-9_\-]+)/i);
+            if (realmPathMatch) {
+              realm = realmPathMatch[2];
+              domain = `${new URL(url).origin}${realmPathMatch[1]}`;
+            }
+          }
+
+          if (domain && realm) {
+            const ssoLoginUrl = `${domain}/realms/${realm}/protocol/openid-connect/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(url)}&response_type=code&scope=openid`;
+
+            const ssoRes = await fetch(ssoLoginUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Watchtower/1.0' },
+              signal: AbortSignal.timeout(3000)
+            });
+            if (ssoRes.ok) {
+              const ssoText = await ssoRes.text();
+              if (ssoText.toLowerCase().includes(target.keyword.toLowerCase())) {
+                isKeywordFound = true;
+              }
+            }
+
+            if (!isKeywordFound) {
+              const realmUrl = `${domain}/realms/${realm}`;
+              const realmRes = await fetch(realmUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Watchtower/1.0', Accept: 'application/json' },
+                signal: AbortSignal.timeout(2000)
+              });
+              if (realmRes.ok) {
+                const realmText = await realmRes.text();
+                if (realmText.toLowerCase().includes(target.keyword.toLowerCase())) {
+                  isKeywordFound = true;
+                }
+              }
+            }
+          }
+        } catch {
+          // Ignore fallback errors, rely on standard failure message
+        }
+      }
+
+      if (!isKeywordFound) {
         return {
           status: 'degraded',
           latency,
