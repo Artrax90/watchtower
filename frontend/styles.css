@@ -103,6 +103,8 @@
   font: 11px Inter, sans-serif;
   outline: none;
   transition: border-color 0.15s;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 .form-input:focus, .form-select:focus {
   border-color: var(--primary);
@@ -1064,6 +1066,62 @@ body.not-authenticated #setupModal [data-close-modal] {
   align-items: center;
   gap: 6px;
 }
+.tg-add-user-box {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 15px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+.tg-add-user-title {
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+.tg-add-user-title svg {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+.tg-add-user-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+.tg-add-user-row .form-input {
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  font-size: 11px;
+}
+.tg-add-user-row #newTgUserId {
+  flex: 1.1;
+}
+.tg-add-user-row #newTgUserName {
+  flex: 1.1;
+}
+.tg-add-user-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 9px 14px;
+}
+@media (max-width: 520px) {
+  .tg-add-user-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .tg-add-user-row .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
 .tg-modal-users-list {
   display: grid;
   gap: 7px;
@@ -1077,6 +1135,8 @@ body.not-authenticated #setupModal [data-close-modal] {
   border-radius: 9px;
   padding: 10px 14px;
   transition: border-color 0.15s;
+  box-sizing: border-box;
+  width: 100%;
 }
 .tg-user-card-item:hover {
   border-color: var(--primary);
@@ -1085,6 +1145,8 @@ body.not-authenticated #setupModal [data-close-modal] {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 .tg-user-avatar {
   width: 32px;
@@ -1113,6 +1175,7 @@ body.not-authenticated #setupModal [data-close-modal] {
   font-size: 11px;
   color: var(--primary);
   transition: background 0.15s;
+  flex-shrink: 0;
 }
 .tg-user-id-code:hover {
   background: var(--soft);
@@ -1120,6 +1183,10 @@ body.not-authenticated #setupModal [data-close-modal] {
 .tg-user-label {
   font-size: 11.5px;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
 }
 .tg-user-status-badge {
   display: inline-flex;
