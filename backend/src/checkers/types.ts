@@ -1,3 +1,12 @@
+export interface ChainStep {
+  name: string;
+  target: string;
+  status: 'ok' | 'fail' | 'skipped';
+  statusCode?: number;
+  latency?: number;
+  details?: string;
+}
+
 export interface CheckResult {
   status: 'online' | 'down' | 'degraded';
   latency: number;
@@ -10,6 +19,15 @@ export interface CheckResult {
     expiryDate?: string;
     valid: boolean;
     error?: string;
+  };
+  chainDetails?: {
+    initialUrl: string;
+    finalUrl: string;
+    redirected: boolean;
+    keywordFound?: boolean;
+    keyword?: string;
+    ssoUrl?: string;
+    steps?: ChainStep[];
   };
 }
 

@@ -530,6 +530,7 @@
   <!-- Global Floating Action Menu (Decoupled from table to prevent scrollbars) -->
   <div class="floating-action-menu" id="floatingActionMenu">
     <button id="famCheckBtn"><i data-lucide="refresh-cw"></i> Проверить сейчас</button>
+    <button id="famChainBtn"><i data-lucide="git-merge"></i> Цепочка проверки</button>
     <button id="famPauseBtn"><i data-lucide="pause"></i> <span id="famPauseText">На паузу</span></button>
     <button id="famEditBtn"><i data-lucide="edit"></i> Изменить</button>
     <button class="delete-btn" id="famDeleteBtn"><i data-lucide="trash-2"></i> Удалить</button>
@@ -831,13 +832,14 @@
               <p id="diagBannerSubtitle">Задержка: 45 мс</p>
             </div>
           </div>
-          <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:6px;font-size:11px">
+          <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:6px;font-size:12.5px">
             <div><b>Монитор:</b> <span id="diagMonitorName">—</span></div>
             <div><b>Цель (Target):</b> <span id="diagMonitorTarget" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span></div>
             <div id="diagIpRow" style="display:none"><b>IP адрес источника:</b> <span id="diagIpValue" style="font-family:'JetBrains Mono',monospace;color:var(--primary)">—</span></div>
             <div><b>Тип проверки:</b> <span id="diagCheckType" class="type-badge">—</span></div>
             <div id="diagDetailsRow"><b>Детали:</b> <span id="diagDetailsText">—</span></div>
           </div>
+          <div id="diagChainContainer" style="display:none;margin-top:10px"></div>
         </div>
       </div>
       <div class="modal-footer">

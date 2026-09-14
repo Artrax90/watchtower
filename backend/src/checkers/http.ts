@@ -1,4 +1,4 @@
-import { CheckResult, MonitorCheckTarget } from './types.js';
+import { CheckResult, MonitorCheckTarget, ChainStep } from './types.js';
 import { checkSSL } from './ssl.js';
 
 export function isExpectedStatus(actualCode: number, expectedExpr?: string | null): boolean {
@@ -107,10 +107,13 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
     }
 
     // Check keyword in body and Location header (for redirect check)
+    let isKeywordFound = false;
+    let discoveredSsoUrl: string | undefined = undefined;
+
     if (target.keyword) {
       const locationHeader = response.headers.get('location') || '';
       const matchSource = `${bodyText} Location: ${locationHeader}`;
-      let isKeywordFound = matchSource.toLowerCase().includes(target.keyword.toLowerCase());
+      isKeywordFound = matchSource.toLowerCase().includes(target.keyword.toLowerCase());
 
       // If not found in HTML shell, check if target is an SPA that delegates auth to an SSO gateway
       if (!isKeywordFound && statusCode === 200 && (bodyText.includes('id="root"') || bodyText.includes('id="app"') || bodyText.includes('class="login-pf"') || bodyText.includes('keycloak'))) {
@@ -158,6 +161,7 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
 
           if (domain && realm) {
             const ssoLoginUrl = `${domain}/realms/${realm}/protocol/openid-connect/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(url)}&response_type=code&scope=openid`;
+            discoveredSsoUrl = ssoLoginUrl;
 
             const ssoRes = await fetch(ssoLoginUrl, {
               headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Watchtower/1.0' },
@@ -188,16 +192,74 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
           // Ignore fallback errors, rely on standard failure message
         }
       }
+    }
 
-      if (!isKeywordFound) {
-        return {
-          status: 'degraded',
-          latency,
-          statusCode,
-          error: `Ожидаемый текст/адрес "${target.keyword}" не найден в ответе/редиректе`,
-          ssl: sslResult
-        };
+    const finalUrl = response.url || url;
+    const isRedirected = Boolean(response.url && response.url !== url);
+
+    const chainSteps: ChainStep[] = [];
+
+    // Step 1: Entry Point URL
+    chainSteps.push({
+      name: 'Входная точка (Портал)',
+      target: url,
+      status: (statusCode >= 200 && statusCode < 400) ? 'ok' : 'fail',
+      statusCode,
+      latency,
+      details: isRedirected
+        ? `Успешное перенаправление на страницу входа (${finalUrl})`
+        : `Сервер ответил HTTP ${statusCode}`
+    });
+
+    // Step 2: Auth page / SSO gateway
+    if (target.keyword || isRedirected || discoveredSsoUrl) {
+      const authTarget = discoveredSsoUrl || finalUrl;
+      const stepStatus: 'ok' | 'fail' = (!target.keyword || isKeywordFound) ? 'ok' : 'fail';
+      let details = 'Страница авторизации загружена';
+      if (target.keyword) {
+        details = isKeywordFound
+          ? `Форма входа найдена, ключевое слово «${target.keyword}» подтверждено`
+          : `Ключевое слово «${target.keyword}» не найдено на странице`;
       }
+      chainSteps.push({
+        name: discoveredSsoUrl ? 'Шлюз SSO (Keycloak)' : 'Форма авторизации',
+        target: authTarget,
+        status: stepStatus,
+        details
+      });
+    }
+
+    // Step 3: TLS / SSL
+    if (sslResult) {
+      chainSteps.push({
+        name: 'Безопасность TLS / SSL',
+        target: new URL(url).hostname,
+        status: sslResult.valid ? 'ok' : 'fail',
+        details: sslResult.valid
+          ? `Действителен ещё ${sslResult.daysRemaining} дн. (${sslResult.issuer || 'Trusted CA'})`
+          : (sslResult.error || 'Ошибка SSL')
+      });
+    }
+
+    const chainDetails = {
+      initialUrl: url,
+      finalUrl,
+      redirected: isRedirected,
+      keywordFound: target.keyword ? isKeywordFound : undefined,
+      keyword: target.keyword || undefined,
+      ssoUrl: discoveredSsoUrl,
+      steps: chainSteps
+    };
+
+    if (target.keyword && !isKeywordFound) {
+      return {
+        status: 'degraded',
+        latency,
+        statusCode,
+        error: `Ожидаемый текст/адрес "${target.keyword}" не найден в ответе/редиректе`,
+        ssl: sslResult,
+        chainDetails
+      };
     }
 
     const isOk = isExpectedStatus(statusCode, target.expected_status);
@@ -214,7 +276,8 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
           latency,
           statusCode,
           error: sslMsg,
-          ssl: sslResult
+          ssl: sslResult,
+          chainDetails
         };
       }
 
@@ -224,7 +287,8 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
         latency,
         statusCode,
         error: isDegraded ? `Высокая задержка отклика HTTP: ${latency} мс (порог деградации > 2000 мс)` : undefined,
-        ssl: sslResult
+        ssl: sslResult,
+        chainDetails
       };
     } else {
       const expMsg = target.expected_status ? ` (ожидался: ${target.expected_status})` : '';
@@ -233,7 +297,8 @@ export async function checkHTTP(target: MonitorCheckTarget): Promise<CheckResult
         latency,
         statusCode,
         error: `HTTP статус ${statusCode} ${response.statusText || ''}${expMsg}`.trim(),
-        ssl: sslResult
+        ssl: sslResult,
+        chainDetails
       };
     }
   } catch (err: any) {

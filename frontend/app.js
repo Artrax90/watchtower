@@ -1030,10 +1030,17 @@
     document.getElementById('famPauseText').textContent = currentActionMonitorPaused ? 'Возобновить' : 'На паузу';
     document.querySelector('#famPauseBtn svg')?.setAttribute('data-lucide', currentActionMonitorPaused ? 'play' : 'pause');
 
+    // Show chain inspection button for HTTP monitors or monitors with keyword/chain
+    const chainBtn = document.getElementById('famChainBtn');
+    if (chainBtn) {
+      const isHttpOrChain = (monitor.type || '').includes('http') || Boolean(monitor.keyword);
+      chainBtn.style.display = isHttpOrChain ? 'flex' : 'none';
+    }
+
     // Calculate fixed viewport coordinates
     const rect = btn.getBoundingClientRect();
     const menuWidth = 155;
-    const menuHeight = 145;
+    const menuHeight = 175;
 
     let top = rect.bottom + 4;
     let left = rect.right - menuWidth;
@@ -1077,6 +1084,12 @@
     } catch (err) {
       showToast(`Ошибка: ${err.message}`, false);
     }
+  });
+
+  document.getElementById('famChainBtn')?.addEventListener('click', () => {
+    const id = currentActionMonitorId;
+    closeFloatingMenu();
+    window.runBadgeCheck(null, id, 'auth');
   });
 
   document.getElementById('famPauseBtn')?.addEventListener('click', async () => {
@@ -1789,8 +1802,19 @@
     const loading = document.getElementById('diagLoadingState');
     const result = document.getElementById('diagResultState');
     const title = document.getElementById('diagModalTitle');
+    const chainContainer = document.getElementById('diagChainContainer');
 
-    title.textContent = `🔍 Экспресс-проверка: ${type.toUpperCase()}`;
+    if (type === 'auth') {
+      title.textContent = `🔗 Сквозная проверка: Авторизация и редиректы`;
+    } else {
+      title.textContent = `🔍 Экспресс-проверка: ${type.toUpperCase()}`;
+    }
+
+    if (chainContainer) {
+      chainContainer.innerHTML = '';
+      chainContainer.style.display = 'none';
+    }
+
     loading.style.display = 'block';
     result.style.display = 'none';
     openModal(modal);
@@ -1817,6 +1841,48 @@
         ipRow.style.display = 'block';
       } else {
         ipRow.style.display = 'none';
+      }
+
+      // Render End-to-End Chain breakdown if available
+      if (chainContainer) {
+        if (check.chainDetails && Array.isArray(check.chainDetails.steps) && check.chainDetails.steps.length > 0) {
+          const stepsHtml = check.chainDetails.steps.map((step, idx) => {
+            const isOk = step.status === 'ok' || step.status === 'online';
+            const statusClass = isOk ? 'operational' : 'outage';
+            const statusText = isOk ? 'Успешно' : 'Ошибка';
+            const stepNum = step.step || (idx + 1);
+            const stepTitle = step.name || step.title || `Шаг ${stepNum}`;
+            const stepTarget = step.target || step.url || '';
+            return `
+              <div class="diag-chain-step">
+                <div class="diag-chain-num">${stepNum}</div>
+                <div class="diag-chain-content">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <span style="font-weight:600;font-size:12.5px">${escapeHtml(stepTitle)}</span>
+                    <span class="step-status-pill ${statusClass}">${statusText}</span>
+                  </div>
+                  ${stepTarget ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--primary);margin-top:3px;word-break:break-all">${escapeHtml(stepTarget)}</div>` : ''}
+                  <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${escapeHtml(step.details || '')}</div>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          chainContainer.innerHTML = `
+            <div class="diag-chain-card">
+              <div class="diag-chain-title">
+                <i data-lucide="git-merge" style="width:15px;height:15px"></i> Сквозная цепочка мониторинга
+              </div>
+              <div class="diag-chain-steps">
+                ${stepsHtml}
+              </div>
+            </div>
+          `;
+          chainContainer.style.display = 'block';
+        } else {
+          chainContainer.innerHTML = '';
+          chainContainer.style.display = 'none';
+        }
       }
 
       const banner = document.getElementById('diagBanner');
@@ -1848,6 +1914,10 @@
       // Refresh monitor data in table
       loadMonitors();
     } catch (err) {
+      if (chainContainer) {
+        chainContainer.innerHTML = '';
+        chainContainer.style.display = 'none';
+      }
       loading.style.display = 'none';
       result.style.display = 'block';
       const banner = document.getElementById('diagBanner');
@@ -2050,13 +2120,30 @@
           }
 
           // Active check badges - clickable to run single diagnostic check
-          const checkBadges = (m.type || 'http')
+          let checkBadges = (m.type || 'http')
             .split(',')
             .map((t) => {
               const cleanType = t.trim().toLowerCase();
               return `<span class="type-badge clickable" onclick="window.runBadgeCheck(event, '${m.id}', '${cleanType}')" title="Нажмите для проверки ${cleanType.toUpperCase()}">${cleanType.toUpperCase()}</span>`;
             })
             .join('');
+
+          if (m.keyword) {
+            checkBadges += `<span class="type-badge clickable auth-badge" onclick="window.runBadgeCheck(event, '${m.id}', 'auth')" title="Сквозная проверка цепочки авторизации (поиск формы/страницы)"><i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-1px"></i> AUTH</span>`;
+          }
+
+          // Visual Auth Monitoring Chain Tag
+          let authChainHtml = '';
+          if (m.keyword) {
+            authChainHtml = `
+              <div class="monitor-chain-tag" onclick="window.runBadgeCheck(event, '${m.id}', 'auth')" title="Сквозной мониторинг: переход к форме входа и проверка ключевого слова">
+                <i data-lucide="corner-down-right"></i>
+                <span class="chain-badge-part">Вход</span>
+                <span class="chain-arrow">➔</span>
+                <span class="chain-kw">«${escapeHtml(m.keyword.length > 32 ? m.keyword.slice(0, 32) + '…' : m.keyword)}»</span>
+              </div>
+            `;
+          }
 
           // SSL Tag - also clickable to inspect certificate
           let sslTag = '';
@@ -2129,6 +2216,7 @@
                       ${checkBadges}
                     </div>
                     <small>${escapeHtml(m.target)}${m.port ? `:${m.port}` : ''}</small>
+                    ${authChainHtml}
                     ${sslTag}
                   </div>
                 </div>

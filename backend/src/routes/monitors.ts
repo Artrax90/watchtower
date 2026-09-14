@@ -211,9 +211,25 @@ export async function monitorRoutes(fastify: FastifyInstance) {
           latency: res.latency,
           statusCode: res.statusCode,
           error: res.error,
+          chainDetails: res.chainDetails,
           details: res.statusCode
             ? `Код ответа: ${res.statusCode}, задержка: ${res.latency} мс`
             : `Сбой HTTP: ${res.error || 'Ошибка соединения'}`
+        };
+      } else if (type === 'auth' || type === 'chain') {
+        const res = await checkHTTP(monitor);
+        result = {
+          type: 'AUTH',
+          status: res.status,
+          latency: res.latency,
+          statusCode: res.statusCode,
+          error: res.error,
+          chainDetails: res.chainDetails,
+          details: res.status === 'online'
+            ? (res.chainDetails?.redirected
+                ? `Сквозной вход в норме: ${res.chainDetails.initialUrl} ➔ ${res.chainDetails.finalUrl}${monitor.keyword ? ` (ключевое слово «${monitor.keyword}» найдено)` : ''}`
+                : `Форма авторизации проверена: ${res.chainDetails?.finalUrl || monitor.target}${monitor.keyword ? ` (слово «${monitor.keyword}» найдено)` : ''}`)
+            : (res.error || 'Сбой проверки формы авторизации')
         };
       } else if (type === 'ssl') {
         let host = monitor.target.replace(/^https?:\/\//i, '').split('/')[0];
