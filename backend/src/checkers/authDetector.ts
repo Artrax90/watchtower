@@ -766,7 +766,7 @@ export async function detectAuthMechanism(targetInput: string, timeoutMs = 8000)
       } catch {}
     }
 
-    // Step 7: Probe Common Web Auth Paths (Essential for portals where / is 404, 403, or landing page like cms.bmstu.ru)
+    // Step 7: Probe Common Web Auth Paths (Essential for portals where / is 404, 403, or landing page like enterprise CMS or admin portals)
     const commonPortalAuthPaths = [
       '/cp',
       '/admin',
