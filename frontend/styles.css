@@ -954,14 +954,21 @@ body.route-incidents #sectionBottomGrid {
 body.not-authenticated .app {
   display: none !important;
 }
-body.not-authenticated #loginModal,
-body.not-authenticated #setupModal {
+body.not-authenticated #loginModal.open,
+body.not-authenticated #setupModal.open {
+  display: grid !important;
   opacity: 1 !important;
   pointer-events: auto !important;
   background: var(--bg) !important;
 }
-body.not-authenticated #loginModal .modal,
-body.not-authenticated #setupModal .modal {
+body.not-authenticated #loginModal:not(.open),
+body.not-authenticated #setupModal:not(.open) {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+body.not-authenticated #loginModal.open .modal,
+body.not-authenticated #setupModal.open .modal {
   transform: translateY(0) scale(1) !important;
 }
 body.not-authenticated #loginModal .modal-close,

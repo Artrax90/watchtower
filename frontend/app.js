@@ -296,6 +296,11 @@
       const status = await api('/auth/status');
       authState = status;
 
+      const setupWrap = document.getElementById('loginSwitchToSetupWrap');
+      if (setupWrap) {
+        setupWrap.style.display = status.needsSetup ? 'block' : 'none';
+      }
+
       if (status.needsSetup) {
         body.classList.add('not-authenticated');
         closeModal(loginModal);
@@ -324,6 +329,19 @@
     } else {
       openModal(loginModal);
     }
+  });
+
+  // Switch between Setup and Login modals
+  document.getElementById('switchToSetupBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal(loginModal);
+    openModal(setupModal);
+  });
+
+  document.getElementById('switchToLoginBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal(setupModal);
+    openModal(loginModal);
   });
 
   // Setup Form

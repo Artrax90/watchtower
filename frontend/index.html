@@ -564,6 +564,9 @@
             <label for="setupPasswordConfirm">Подтверждение пароля</label>
             <input type="password" class="form-input" id="setupPasswordConfirm" placeholder="Повторите пароль" required minlength="6">
           </div>
+          <div style="margin-top:14px;text-align:center;font-size:11px;color:var(--muted)">
+            Уже создали учётную запись? <a href="#" id="switchToLoginBtn" style="color:var(--primary);font-weight:600;text-decoration:none">Войти</a>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="submit" class="btn btn-primary">
@@ -591,6 +594,9 @@
           <div class="form-group">
             <label for="loginPassword">Пароль</label>
             <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" required>
+          </div>
+          <div style="margin-top:14px;text-align:center;font-size:11px;color:var(--muted)" id="loginSwitchToSetupWrap">
+            Первый запуск? <a href="#" id="switchToSetupBtn" style="color:var(--primary);font-weight:600;text-decoration:none">Создать администратора</a>
           </div>
         </div>
         <div class="modal-footer">
