@@ -27,6 +27,7 @@
   const loginModal = document.getElementById('loginModal');
   const monitorModal = document.getElementById('monitorModal');
   const diagnosticModal = document.getElementById('diagnosticModal');
+  const tgUsersModal = document.getElementById('tgUsersModal');
 
   // --- Helpers ---
   function showToast(msg, isSuccess = true) {
@@ -1011,6 +1012,216 @@
     };
   }
 
+  // --- Telegram Whitelist State & Modal Handlers ---
+  let tgAllowedUsers = []; // Array of { id: string, name?: string }
+
+  function parseLoadedTgUsers(config) {
+    if (!config) return [];
+    if (Array.isArray(config.allowedUsers) && config.allowedUsers.length > 0) {
+      return config.allowedUsers
+        .map((u) => {
+          if (typeof u === 'object' && u !== null && u.id) {
+            return { id: String(u.id).trim(), name: (u.name || '').trim() };
+          }
+          return { id: String(u).trim(), name: '' };
+        })
+        .filter((u) => u.id);
+    }
+    const raw = config.userIds || config.allowedUserIds || '';
+    if (typeof raw === 'string' && raw.trim()) {
+      return raw
+        .split(/[\s,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((id) => ({ id, name: '' }));
+    }
+    return [];
+  }
+
+  function pluralizeUsers(n) {
+    if (n % 10 === 1 && n % 100 !== 11) return 'пользователь';
+    if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return 'пользователя';
+    return 'пользователей';
+  }
+
+  function renderTgUserChips() {
+    const badge = document.getElementById('tgUserCountBadge');
+    const container = document.getElementById('tgUserChipsContainer');
+    if (!container) return;
+
+    const count = tgAllowedUsers.length;
+    if (badge) {
+      badge.textContent = `${count} ${pluralizeUsers(count)}`;
+      badge.className = `badge ${count > 0 ? 'success' : ''}`;
+    }
+
+    if (count === 0) {
+      container.innerHTML = `
+        <div class="tg-chips-empty">
+          <i data-lucide="lock" style="width:13px;height:13px"></i>
+          <span>Список пуст — бот заблокирован для всех. Нажмите «Настроить доступ», чтобы добавить ID.</span>
+        </div>
+      `;
+    } else {
+      container.innerHTML = tgAllowedUsers
+        .map((u) => {
+          const nameLabel = u.name ? `<span class="chip-name">${escapeHtml(u.name)}</span>` : '';
+          return `
+            <span class="tg-user-chip" title="ID: ${u.id}">
+              <i data-lucide="user" style="width:12px;height:12px;color:var(--primary)"></i>
+              <code>${escapeHtml(u.id)}</code>
+              ${nameLabel}
+              <button type="button" class="chip-del-btn" onclick="window.removeTgUser('${u.id}')" title="Удалить из списка">×</button>
+            </span>
+          `;
+        })
+        .join('');
+    }
+    lucide.createIcons();
+  }
+
+  function renderTgModalUsersList() {
+    const countEl = document.getElementById('tgModalCount');
+    const container = document.getElementById('tgModalUsersList');
+    if (!container) return;
+
+    const count = tgAllowedUsers.length;
+    if (countEl) countEl.textContent = count;
+
+    if (count === 0) {
+      container.innerHTML = `
+        <div class="tg-users-empty-state">
+          <div class="tg-empty-icon"><i data-lucide="users"></i></div>
+          <h4>Список пользователей пуст</h4>
+          <p>Бот заблокирован для всех посторонних. Попросите пользователя написать боту в Telegram — бот выдаст ему персональный ID, который вы сможете ввести выше.</p>
+        </div>
+      `;
+    } else {
+      container.innerHTML = tgAllowedUsers
+        .map((u) => {
+          const nameHtml = u.name
+            ? `<b class="tg-user-label">${escapeHtml(u.name)}</b>`
+            : `<span style="font-size:11px;color:var(--muted)">Без заметки</span>`;
+
+          return `
+            <div class="tg-user-card-item">
+              <div class="tg-user-card-left">
+                <span class="tg-user-avatar">
+                  <i data-lucide="user-check"></i>
+                </span>
+                <div>
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span class="tg-user-id-code" onclick="navigator.clipboard.writeText('${u.id}'); showToast('ID скопирован: ${u.id}')" title="Нажмите, чтобы скопировать ID">
+                      <code>${escapeHtml(u.id)}</code>
+                      <i data-lucide="copy" style="width:11px;height:11px"></i>
+                    </span>
+                    ${nameHtml}
+                  </div>
+                  <div>
+                    <span class="tg-user-status-badge">
+                      <i data-lucide="check-circle"></i> Авторизован
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="btn-icon-del" onclick="window.removeTgUser('${u.id}')" title="Отозвать доступ">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </div>
+          `;
+        })
+        .join('');
+    }
+    lucide.createIcons();
+  }
+
+  window.removeTgUser = function (id) {
+    tgAllowedUsers = tgAllowedUsers.filter((u) => u.id !== String(id).trim());
+    renderTgUserChips();
+    renderTgModalUsersList();
+    showToast('Пользователь удален из списка');
+  };
+
+  function addTgUserFromInputs() {
+    const idInput = document.getElementById('newTgUserId');
+    const nameInput = document.getElementById('newTgUserName');
+    const errBox = document.getElementById('tgUserAddError');
+    if (!idInput) return;
+
+    const rawId = idInput.value.trim();
+    const name = (nameInput?.value || '').trim();
+
+    if (errBox) errBox.style.display = 'none';
+
+    if (!rawId) {
+      if (errBox) {
+        errBox.textContent = 'Пожалуйста, введите Telegram User ID';
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (!/^-?\d+$/.test(rawId)) {
+      if (errBox) {
+        errBox.textContent = 'User ID должен состоять только из цифр (например: 123456789)';
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (tgAllowedUsers.some((u) => u.id === rawId)) {
+      if (errBox) {
+        errBox.textContent = `Пользователь с ID ${rawId} уже добавлен в список`;
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+
+    tgAllowedUsers.push({ id: rawId, name });
+    idInput.value = '';
+    if (nameInput) nameInput.value = '';
+
+    renderTgUserChips();
+    renderTgModalUsersList();
+    showToast(`Пользователь ${name ? `«${name}» ` : ''}(${rawId}) добавлен`);
+  }
+
+  document.getElementById('tgAddUserBtn')?.addEventListener('click', addTgUserFromInputs);
+  document.getElementById('newTgUserId')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTgUserFromInputs();
+    }
+  });
+  document.getElementById('newTgUserName')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTgUserFromInputs();
+    }
+  });
+
+  document.getElementById('openTgUsersModalBtn')?.addEventListener('click', () => {
+    renderTgModalUsersList();
+    const errBox = document.getElementById('tgUserAddError');
+    if (errBox) errBox.style.display = 'none';
+    const idInput = document.getElementById('newTgUserId');
+    if (idInput) {
+      idInput.value = '';
+      setTimeout(() => idInput.focus(), 150);
+    }
+    const nameInput = document.getElementById('newTgUserName');
+    if (nameInput) nameInput.value = '';
+    openModal(tgUsersModal);
+  });
+
+  document.getElementById('tgSaveUsersModalBtn')?.addEventListener('click', async () => {
+    const tgForm = document.getElementById('tgForm');
+    if (tgForm) {
+      tgForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+    closeModal(tgUsersModal);
+  });
+
   // --- Notification settings ---
   async function loadNotificationsConfig() {
     try {
@@ -1022,7 +1233,9 @@
         document.getElementById('tgEnabled').checked = tg.is_enabled === 1;
         document.getElementById('tgBotToken').value = tg.config.botToken || '';
         document.getElementById('tgChatId').value = tg.config.chatId || '';
-        document.getElementById('tgUserIds').value = tg.config.userIds || tg.config.allowedUserIds || '';
+
+        tgAllowedUsers = parseLoadedTgUsers(tg.config);
+        renderTgUserChips();
 
         const typeEl = document.getElementById('tgProxyType');
         const hostEl = document.getElementById('tgProxyHost');
@@ -1068,7 +1281,6 @@
     e.preventDefault();
     const token = document.getElementById('tgBotToken').value.trim();
     const chatId = document.getElementById('tgChatId').value.trim();
-    const userIds = document.getElementById('tgUserIds')?.value.trim() || '';
     const enabled = document.getElementById('tgEnabled').checked ? 1 : 0;
     const proxyCfg = getTgProxyConfig();
     const notifError = document.getElementById('notifError');
@@ -1082,7 +1294,13 @@
           type: 'telegram',
           name: 'Telegram Alerts',
           is_enabled: enabled,
-          config: { botToken: token, chatId, userIds, ...proxyCfg }
+          config: {
+            botToken: token,
+            chatId,
+            allowedUsers: tgAllowedUsers,
+            userIds: tgAllowedUsers.map((u) => u.id).join(', '),
+            ...proxyCfg
+          }
         })
       });
       notifSuccess.textContent = 'Настройки Telegram успешно сохранены!';
@@ -1135,7 +1353,6 @@
   document.getElementById('testTgBtn')?.addEventListener('click', async () => {
     const token = document.getElementById('tgBotToken').value.trim();
     const chatId = document.getElementById('tgChatId').value.trim();
-    const userIds = document.getElementById('tgUserIds')?.value.trim() || '';
     const proxyCfg = getTgProxyConfig();
     const notifError = document.getElementById('notifError');
     const notifSuccess = document.getElementById('notifSuccess');
@@ -1151,7 +1368,13 @@
         method: 'POST',
         body: JSON.stringify({
           type: 'telegram',
-          config: { botToken: token, chatId, userIds, ...proxyCfg }
+          config: {
+            botToken: token,
+            chatId,
+            allowedUsers: tgAllowedUsers,
+            userIds: tgAllowedUsers.map((u) => u.id).join(', '),
+            ...proxyCfg
+          }
         })
       });
       if (res.success) {

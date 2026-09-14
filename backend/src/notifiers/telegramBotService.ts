@@ -29,7 +29,14 @@ export interface ActiveTelegramConfig {
 export function parseUserIds(input: any): string[] {
   if (!input) return [];
   if (Array.isArray(input)) {
-    return input.map((x) => String(x).trim()).filter((s) => s.length > 0);
+    return input
+      .map((x) => {
+        if (typeof x === 'object' && x !== null && (x.id || x.userId)) {
+          return String(x.id || x.userId).trim();
+        }
+        return String(x).trim();
+      })
+      .filter((s) => s.length > 0);
   }
   if (typeof input === 'string' || typeof input === 'number') {
     return String(input)
@@ -59,7 +66,7 @@ function getActiveTelegramConfig(): ActiveTelegramConfig | null {
   try {
     const cfg = JSON.parse(tgChannel.config);
     if (cfg && cfg.botToken) {
-      const rawUserIds = cfg.userIds ?? cfg.allowedUserIds ?? cfg.userId ?? '';
+      const rawUserIds = cfg.allowedUsers ?? cfg.userIds ?? cfg.allowedUserIds ?? cfg.userId ?? '';
       const allowedUserIds = parseUserIds(rawUserIds);
 
       return {

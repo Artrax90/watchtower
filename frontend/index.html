@@ -293,12 +293,33 @@
               <small>Идентификатор чата, группы или канала для отправки уведомлений о сбоях</small>
             </div>
             <div class="form-group">
-              <label for="tgUserIds" style="display:flex;align-items:center;justify-content:space-between">
-                <span>Разрешенные Telegram User ID (Белый список)</span>
-                <span style="font-size:10px;color:var(--primary);font-weight:600">Защита от чужих пользователей</span>
+              <label style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <span>Авторизация пользователей (Белый список)</span>
+                <span style="font-size:10px;color:var(--primary);font-weight:600">Защита от чужих</span>
               </label>
-              <input type="text" class="form-input" id="tgUserIds" placeholder="например, 123456789, 987654321">
-              <small>ID пользователей Telegram, которым разрешено писать боту и выполнять команды (через запятую). При добавлении нового ID бот автоматически отправит пользователю приветственное сообщение!</small>
+              <div class="tg-whitelist-card">
+                <div class="tg-whitelist-header">
+                  <div class="tg-whitelist-title-wrap">
+                    <span class="tg-whitelist-icon"><i data-lucide="shield-check"></i></span>
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <b style="font-size:11.5px">Разрешенные пользователи Telegram</b>
+                        <span class="badge" id="tgUserCountBadge" style="font-size:9.5px;padding:2px 7px;border-radius:12px">0 пользователей</span>
+                      </div>
+                      <small style="color:var(--muted);font-size:9.5px;display:block;margin-top:2px">Бот отвечает только авторизованным ID. Посторонние получают свой ID с инструкцией.</small>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary" id="openTgUsersModalBtn" style="padding:6px 12px;font-size:11px">
+                    <i data-lucide="user-check"></i> Настроить доступ
+                  </button>
+                </div>
+                <div id="tgUserChipsContainer" class="tg-chips-container">
+                  <div class="tg-chips-empty">
+                    <i data-lucide="lock" style="width:13px;height:13px"></i>
+                    <span>Список пуст — бот заблокирован для всех. Нажмите «Настроить доступ», чтобы добавить ID.</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div style="border-top:1px solid var(--line);margin:16px 0 12px;padding-top:14px">
               <label style="font-size:11px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px">
@@ -829,6 +850,68 @@
         <button type="button" class="btn" id="confirmActionBtn" style="background:var(--red);color:#fff;border-color:var(--red);font-weight:600">
           <i data-lucide="trash-2"></i> <span id="confirmActionBtnText">Удалить</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram Users Whitelist Modal -->
+  <div class="modal-backdrop" id="tgUsersModal">
+    <div class="modal" style="max-width: 530px">
+      <div class="modal-header">
+        <h3 style="display:flex;align-items:center;gap:8px">
+          <i data-lucide="shield-check" style="color:var(--primary);width:18px;height:18px"></i>
+          <span>Белый список пользователей Telegram</span>
+        </h3>
+        <button type="button" class="modal-close" data-close-modal><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body" style="padding:18px 22px">
+        <!-- Info Banner -->
+        <div class="status-banner operational" style="margin-bottom:16px;background:var(--soft);border-color:var(--line);align-items:flex-start">
+          <i data-lucide="info" style="width:20px;height:20px;color:var(--primary);flex-shrink:0;margin-top:2px"></i>
+          <div style="font-size:11px;line-height:1.45">
+            <b style="color:var(--text);display:block;margin-bottom:2px">Как работает авторизация в боте:</b>
+            <div style="color:var(--muted)">
+              Бот отвечает только тем пользователям, чей ID есть в этом списке. Если посторонний напишет боту, бот автоматически пришлёт ему его ID с инструкцией. Как только вы добавите ID сюда, бот <b>мгновенно отправит приветствие</b> пользователю в Telegram!
+            </div>
+          </div>
+        </div>
+
+        <!-- Add User Form -->
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+          <label style="font-size:11px;font-weight:700;display:block;margin-bottom:8px">
+            <i data-lucide="user-plus" style="width:13px;vertical-align:-2px;color:var(--primary)"></i> Добавить пользователя
+          </label>
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center">
+            <input type="text" class="form-input" id="newTgUserId" placeholder="User ID (например: 123456789)" style="font-family:'JetBrains Mono',monospace;font-size:11px">
+            <input type="text" class="form-input" id="newTgUserName" placeholder="Имя / Заметка (например: Иван DevOps)" style="font-size:11px">
+            <button type="button" class="btn btn-primary" id="tgAddUserBtn" style="white-space:nowrap;padding:9px 13px">
+              <i data-lucide="plus"></i> Добавить
+            </button>
+          </div>
+          <div id="tgUserAddError" class="alert-box error" style="display:none;margin-top:8px;font-size:10.5px"></div>
+        </div>
+
+        <!-- Users List Header -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <b style="font-size:12px">Авторизованные пользователи (<span id="tgModalCount">0</span>)</b>
+          <small style="color:var(--muted);font-size:10px">Кликните по ID для копирования</small>
+        </div>
+
+        <!-- Users List Container -->
+        <div id="tgModalUsersList" class="tg-modal-users-list" style="max-height:260px;overflow-y:auto">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+        <small style="color:var(--muted);font-size:10.5px;display:flex;align-items:center;gap:5px">
+          <i data-lucide="lock" style="width:13px;color:var(--primary)"></i> Защита от чужих активна
+        </small>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-secondary" data-close-modal>Закрыть</button>
+          <button type="button" class="btn btn-primary" id="tgSaveUsersModalBtn">
+            <i data-lucide="check"></i> Сохранить и применить
+          </button>
+        </div>
       </div>
     </div>
   </div>

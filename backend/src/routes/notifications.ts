@@ -72,7 +72,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         if (existing) {
           try {
             const oldCfg = JSON.parse(existing.config);
-            prevUserIds = parseUserIds(oldCfg.userIds ?? oldCfg.allowedUserIds ?? oldCfg.userId);
+            prevUserIds = parseUserIds(oldCfg.allowedUsers ?? oldCfg.userIds ?? oldCfg.allowedUserIds ?? oldCfg.userId);
             // If submitted botToken is empty or masked, preserve the existing valid botToken
             if ((!config.botToken || config.botToken.includes('...')) && oldCfg.botToken) {
               config.botToken = oldCfg.botToken;
@@ -91,7 +91,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
       });
 
       if (type.toLowerCase() === 'telegram') {
-        const newUserIds = parseUserIds(config.userIds ?? config.allowedUserIds ?? config.userId);
+        const newUserIds = parseUserIds(config.allowedUsers ?? config.userIds ?? config.allowedUserIds ?? config.userId);
         const newlyAdded = newUserIds.filter((uid) => !prevUserIds.includes(uid));
 
         restartTelegramBot();
