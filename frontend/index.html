@@ -186,14 +186,51 @@
       <!-- Bottom Grid: Incidents & Response Time (Shown on /overview and /incidents) -->
       <section class="bottom-grid" id="sectionBottomGrid">
         <article class="incident-card" id="incidents">
-          <div class="card-heading">
+          <div class="card-heading" style="flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px">
             <div>
-              <h2>Активные инциденты <b id="incidentBadgeCount">0</b></h2>
-              <p>Требуют внимания вашей команды</p>
+              <h2 id="incidentsCardTitle">Журнал инцидентов и сбоев</h2>
+              <p id="incidentsCardSub">Активные проблемы, история завершённых инцидентов и журнал сбоев проверок за 24 ч</p>
+            </div>
+            <!-- Filter by monitor -->
+            <div class="incidents-filter-wrap" style="display:flex;align-items:center;gap:8px">
+              <select id="incidentMonitorFilter" class="incident-select" title="Фильтр по конкретному сервису">
+                <option value="">Все мониторы</option>
+              </select>
+              <button type="button" id="resetIncidentFilterBtn" class="btn-clear-filter" style="display:none" title="Сбросить фильтр">
+                <i data-lucide="x"></i>
+              </button>
             </div>
           </div>
-          <div id="incidentsList">
-            <!-- Dynamically rendered incident rows -->
+
+          <!-- Tabs for Incidents: Active, Resolved, Check Issues -->
+          <div class="incident-tabs-bar">
+            <button type="button" class="inc-tab active" data-tab="active">
+              Активные <b id="incidentBadgeCount">0</b>
+            </button>
+            <button type="button" class="inc-tab" data-tab="resolved">
+              История инцидентов <b id="incidentResolvedCount">0</b>
+            </button>
+            <button type="button" class="inc-tab" data-tab="heartbeats">
+              Сбои проверок (24 ч) <b id="incidentIssuesCount">0</b>
+            </button>
+          </div>
+
+          <div id="incidentsTabContentActive" class="inc-tab-pane">
+            <div id="incidentsList">
+              <!-- Dynamically rendered active incident rows -->
+            </div>
+          </div>
+
+          <div id="incidentsTabContentResolved" class="inc-tab-pane" style="display:none">
+            <div id="incidentsResolvedList">
+              <!-- Dynamically rendered resolved incident rows -->
+            </div>
+          </div>
+
+          <div id="incidentsTabContentHeartbeats" class="inc-tab-pane" style="display:none">
+            <div id="incidentsIssuesList">
+              <!-- Dynamically rendered 24h issue heartbeats rows -->
+            </div>
           </div>
         </article>
 

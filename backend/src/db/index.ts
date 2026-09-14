@@ -424,7 +424,18 @@ export const dbQueries = {
       `).run(now, durationSeconds, openInc.id);
     }
   },
-  getActiveIncidents: (): (IncidentRow & { monitor_name: string })[] => {
+  getActiveIncidents: (monitorId?: string): (IncidentRow & { monitor_name: string })[] => {
+    if (monitorId) {
+      return db
+        .prepare(`
+          SELECT i.*, m.name as monitor_name
+          FROM incidents i
+          JOIN monitors m ON i.monitor_id = m.id
+          WHERE i.resolved_at IS NULL AND i.monitor_id = ?
+          ORDER BY i.started_at DESC
+        `)
+        .all(monitorId) as unknown as (IncidentRow & { monitor_name: string })[];
+    }
     return db
       .prepare(`
         SELECT i.*, m.name as monitor_name
@@ -435,16 +446,53 @@ export const dbQueries = {
       `)
       .all() as unknown as (IncidentRow & { monitor_name: string })[];
   },
-  getRecentIncidents: (limit = 10): (IncidentRow & { monitor_name: string })[] => {
+  getRecentIncidents: (limit = 50, monitorId?: string): (IncidentRow & { monitor_name: string })[] => {
+    if (monitorId) {
+      return db
+        .prepare(`
+          SELECT i.*, m.name as monitor_name
+          FROM incidents i
+          JOIN monitors m ON i.monitor_id = m.id
+          WHERE i.resolved_at IS NOT NULL AND i.monitor_id = ?
+          ORDER BY i.started_at DESC
+          LIMIT ?
+        `)
+        .all(monitorId, limit) as unknown as (IncidentRow & { monitor_name: string })[];
+    }
     return db
       .prepare(`
         SELECT i.*, m.name as monitor_name
         FROM incidents i
         JOIN monitors m ON i.monitor_id = m.id
+        WHERE i.resolved_at IS NOT NULL
         ORDER BY i.started_at DESC
         LIMIT ?
       `)
       .all(limit) as unknown as (IncidentRow & { monitor_name: string })[];
+  },
+  getRecentIssuesHeartbeats: (sinceTimestamp: number, limit = 50, monitorId?: string): (HeartbeatRow & { monitor_name: string })[] => {
+    if (monitorId) {
+      return db
+        .prepare(`
+          SELECT h.*, m.name as monitor_name
+          FROM heartbeats h
+          JOIN monitors m ON h.monitor_id = m.id
+          WHERE h.status != 'online' AND h.created_at >= ? AND h.monitor_id = ?
+          ORDER BY h.created_at DESC
+          LIMIT ?
+        `)
+        .all(sinceTimestamp, monitorId, limit) as unknown as (HeartbeatRow & { monitor_name: string })[];
+    }
+    return db
+      .prepare(`
+        SELECT h.*, m.name as monitor_name
+        FROM heartbeats h
+        JOIN monitors m ON h.monitor_id = m.id
+        WHERE h.status != 'online' AND h.created_at >= ?
+        ORDER BY h.created_at DESC
+        LIMIT ?
+      `)
+      .all(sinceTimestamp, limit) as unknown as (HeartbeatRow & { monitor_name: string })[];
   },
 
   // Notification channels

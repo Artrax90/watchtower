@@ -653,6 +653,157 @@ body.route-incidents #sectionBottomGrid {
   grid-template-columns: 1fr;
 }
 
+/* === Clickable Uptime Percent Button === */
+.uptime-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: 600 10px 'JetBrains Mono', monospace;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.uptime-btn svg {
+  width: 11px;
+  height: 11px;
+  opacity: 0.5;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.uptime-btn:hover {
+  background: var(--soft);
+  color: var(--primary);
+  border-color: var(--line);
+}
+.uptime-btn:hover svg {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+.uptime-btn.has-issues {
+  color: var(--amber);
+}
+.uptime-btn.has-issues:hover {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: rgba(236, 157, 34, 0.35);
+}
+
+/* === Incidents Tabs Bar & Filter === */
+.incident-tabs-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 19px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  overflow-x: auto;
+}
+.inc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 7px;
+  font: 600 10px Inter, sans-serif;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.inc-tab b {
+  font: 600 9px 'JetBrains Mono', monospace;
+  background: var(--soft);
+  color: var(--primary);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+.inc-tab.active {
+  border-color: var(--primary);
+  background: var(--soft);
+  color: var(--primary);
+}
+.inc-tab.active b {
+  background: var(--primary);
+  color: #fff;
+}
+.incident-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  font: 500 10px Inter, sans-serif;
+  outline: none;
+}
+.btn-clear-filter {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.btn-clear-filter:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.resolved-dot {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.resolved-badge {
+  background: var(--green-soft);
+  color: var(--green);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.duration-badge {
+  background: var(--soft);
+  color: var(--primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.issue-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 19px;
+  border-top: 1px solid var(--line);
+  transition: background 0.1s;
+}
+.issue-row:hover {
+  background: var(--bg);
+}
+.issue-badge-down {
+  background: var(--red-soft);
+  color: var(--red);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 700;
+}
+.issue-badge-warn {
+  background: var(--amber-soft);
+  color: var(--amber);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 700;
+}
+
 /* === Auth Gate (Incognito / Unauthenticated Protection) === */
 body.not-authenticated .app {
   display: none !important;

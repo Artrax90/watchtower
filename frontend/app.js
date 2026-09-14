@@ -689,6 +689,9 @@
       document.getElementById('navIncidents')?.classList.add('active');
       if (crumbTitle) crumbTitle.textContent = 'Инциденты';
       if (crumbWorkspace) crumbWorkspace.textContent = 'Журнал сбоев';
+      if (authState.authenticated) {
+        loadIncidents();
+      }
     } else if (route === '/alerts') {
       const intro = document.getElementById('introAlerts');
       if (intro) intro.style.display = 'flex';
@@ -1623,7 +1626,10 @@
               <td class="status-cell">${statusBadge}</td>
               <td>
                 <div class="uptime">
-                  <b>${m.uptime24h || 100}%</b>
+                  <button type="button" class="uptime-btn ${m.uptime24h < 100 ? 'has-issues' : ''}" onclick="window.goToIncidents('${m.id}')" title="Uptime ${m.uptime24h || 100}% за 24 ч · Нажмите для просмотра сбоев и инцидентов">
+                    <b>${m.uptime24h || 100}%</b>
+                    <i data-lucide="arrow-up-right"></i>
+                  </button>
                   <span class="ticks good-ticks">${tickElements}</span>
                 </div>
               </td>
@@ -1665,8 +1671,13 @@
         }
 
         // 2. Uptime %
-        const uptimeB = row.querySelector('.uptime > b');
+        const uptimeB = row.querySelector('.uptime-btn > b, .uptime > b');
         if (uptimeB) uptimeB.textContent = `${m.uptime24h || 100}%`;
+        const uptimeBtn = row.querySelector('.uptime-btn');
+        if (uptimeBtn) {
+          if (m.uptime24h < 100) uptimeBtn.classList.add('has-issues');
+          else uptimeBtn.classList.remove('has-issues');
+        }
 
         // 3. Latency
         const latencyCell = row.querySelector('.latency-cell');
@@ -1820,46 +1831,251 @@
     }
   }
 
+  // --- Incidents & History Management ---
+  let selectedIncidentMonitorId = '';
+  let activeIncidentsTab = 'active';
+
+  function formatIncidentTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (isToday) return `Сегодня в ${timeStr}`;
+    return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+  }
+
+  function formatDuration(sec) {
+    if (!sec || sec <= 0) return 'менее секунды';
+    if (sec < 60) return `${sec} сек`;
+    const min = Math.floor(sec / 60);
+    const remSec = sec % 60;
+    if (min < 60) return remSec > 0 ? `${min} мин ${remSec} сек` : `${min} мин`;
+    const hours = Math.floor(min / 60);
+    const remMin = min % 60;
+    return `${hours} ч ${remMin} мин`;
+  }
+
+  function switchIncidentsTab(tabName) {
+    activeIncidentsTab = tabName;
+    document.querySelectorAll('.incident-tabs-bar .inc-tab').forEach((btn) => {
+      if (btn.dataset.tab === tabName) btn.classList.add('active');
+      else btn.classList.remove('active');
+    });
+
+    const activePane = document.getElementById('incidentsTabContentActive');
+    const resolvedPane = document.getElementById('incidentsTabContentResolved');
+    const issuesPane = document.getElementById('incidentsTabContentHeartbeats');
+
+    if (activePane) activePane.style.display = tabName === 'active' ? 'block' : 'none';
+    if (resolvedPane) resolvedPane.style.display = tabName === 'resolved' ? 'block' : 'none';
+    if (issuesPane) issuesPane.style.display = tabName === 'heartbeats' ? 'block' : 'none';
+    lucide.createIcons();
+  }
+
+  // Bind tabs click
+  document.querySelectorAll('.incident-tabs-bar .inc-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      switchIncidentsTab(btn.dataset.tab);
+    });
+  });
+
+  // Bind Monitor Filter select
+  const incFilterSelect = document.getElementById('incidentMonitorFilter');
+  const resetIncFilterBtn = document.getElementById('resetIncidentFilterBtn');
+
+  incFilterSelect?.addEventListener('change', (e) => {
+    selectedIncidentMonitorId = e.target.value;
+    if (resetIncFilterBtn) {
+      resetIncFilterBtn.style.display = selectedIncidentMonitorId ? 'inline-grid' : 'none';
+    }
+    loadIncidents();
+  });
+
+  resetIncFilterBtn?.addEventListener('click', () => {
+    selectedIncidentMonitorId = '';
+    if (incFilterSelect) incFilterSelect.value = '';
+    resetIncFilterBtn.style.display = 'none';
+    loadIncidents();
+  });
+
+  window.goToIncidents = function (monitorId) {
+    selectedIncidentMonitorId = monitorId || '';
+    navigateTo('/incidents');
+    if (incFilterSelect) {
+      incFilterSelect.value = selectedIncidentMonitorId;
+    }
+    if (resetIncFilterBtn) {
+      resetIncFilterBtn.style.display = selectedIncidentMonitorId ? 'inline-grid' : 'none';
+    }
+    loadIncidents().then(() => {
+      const activeCount = parseInt(document.getElementById('incidentBadgeCount')?.textContent || '0', 10);
+      const resolvedCount = parseInt(document.getElementById('incidentResolvedCount')?.textContent || '0', 10);
+      const issuesCount = parseInt(document.getElementById('incidentIssuesCount')?.textContent || '0', 10);
+
+      if (activeCount > 0) {
+        switchIncidentsTab('active');
+      } else if (resolvedCount > 0) {
+        switchIncidentsTab('resolved');
+      } else if (issuesCount > 0) {
+        switchIncidentsTab('heartbeats');
+      } else {
+        switchIncidentsTab('active');
+      }
+    });
+
+    const mon = monitorsList.find((m) => m.id === monitorId);
+    if (mon) {
+      showToast(`Инциденты и сбои для «${mon.name}» (${mon.uptime24h || 100}%)`);
+    }
+  };
+
   async function loadIncidents() {
     try {
-      const { active } = await api('/stats/incidents');
+      // Populate monitor filter dropdown
+      if (incFilterSelect && monitorsList.length > 0) {
+        const currentVal = incFilterSelect.value || selectedIncidentMonitorId;
+        const optionsHtml = [
+          `<option value="">Все сервисы (${monitorsList.length})</option>`,
+          ...monitorsList.map((m) => `<option value="${m.id}" ${m.id === currentVal ? 'selected' : ''}>${escapeHtml(m.name)} (${m.uptime24h || 100}%)</option>`)
+        ].join('');
+        incFilterSelect.innerHTML = optionsHtml;
+        incFilterSelect.value = currentVal;
+      }
+
+      const queryUrl = selectedIncidentMonitorId ? `/stats/incidents?monitor_id=${encodeURIComponent(selectedIncidentMonitorId)}` : '/stats/incidents';
+      const { active = [], recent = [], issueHeartbeats = [] } = await api(queryUrl);
+
       const countEl = document.getElementById('incidentBadgeCount');
       const navCountEl = document.getElementById('navIncidentCount');
-      const listEl = document.getElementById('incidentsList');
+      const resolvedCountEl = document.getElementById('incidentResolvedCount');
+      const issuesCountEl = document.getElementById('incidentIssuesCount');
 
-      countEl.textContent = active.length;
-      navCountEl.textContent = active.length;
+      const activeListEl = document.getElementById('incidentsList');
+      const resolvedListEl = document.getElementById('incidentsResolvedList');
+      const issuesListEl = document.getElementById('incidentsIssuesList');
 
-      if (active.length === 0) {
-        listEl.innerHTML = `
-          <div style="padding:20px;text-align:center;color:var(--muted);font-size:11px">
-            <i data-lucide="check-circle" style="width:24px;height:24px;color:var(--green);margin-bottom:6px"></i>
-            <p style="margin:0">Нет активных инцидентов. Все сервисы работают штатно.</p>
-          </div>
-        `;
-      } else {
-        listEl.innerHTML = active
-          .map((inc) => {
-            const isCritical = inc.status === 'critical';
-            const dotClass = isCritical ? 'critical-dot' : 'warn-dot';
-            const icon = isCritical ? 'x' : 'triangle-alert';
-            const startedMin = Math.round((Date.now() - inc.started_at) / (1000 * 60));
+      if (countEl) countEl.textContent = active.length;
+      if (navCountEl) navCountEl.textContent = active.length;
+      if (resolvedCountEl) resolvedCountEl.textContent = recent.length;
+      if (issuesCountEl) issuesCountEl.textContent = issueHeartbeats.length;
 
-            return `
-              <div class="incident-row">
-                <span class="incident-dot ${dotClass}"><i data-lucide="${icon}"></i></span>
-                <div>
-                  <b>${escapeHtml(inc.monitor_name)}: ${escapeHtml(inc.cause)}</b>
-                  <p>
-                    <span class="${isCritical ? '' : 'warn-badge'}">${isCritical ? 'Критический' : 'Деградация'}</span>
-                    Начался ${startedMin > 0 ? `${startedMin} мин назад` : 'только что'}
-                  </p>
+      // 1. Render Active Incidents
+      if (activeListEl) {
+        if (active.length === 0) {
+          activeListEl.innerHTML = `
+            <div style="padding:26px 20px;text-align:center;color:var(--muted);font-size:11px">
+              <i data-lucide="check-circle" style="width:28px;height:28px;color:var(--green);margin-bottom:8px"></i>
+              <p style="margin:0;font-weight:600;color:var(--text);font-size:12px">Активных сбоев не зафиксировано</p>
+              <p style="margin:4px 0 0;font-size:10px;color:var(--muted)">Все сервисы отвечают в штатном режиме.</p>
+            </div>
+          `;
+        } else {
+          activeListEl.innerHTML = active
+            .map((inc) => {
+              const isCritical = inc.status === 'critical';
+              const dotClass = isCritical ? 'critical-dot' : 'warn-dot';
+              const icon = isCritical ? 'x' : 'triangle-alert';
+              const startedMin = Math.round((Date.now() - inc.started_at) / (1000 * 60));
+
+              return `
+                <div class="incident-row">
+                  <span class="incident-dot ${dotClass}"><i data-lucide="${icon}"></i></span>
+                  <div style="flex:1">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                      <b style="font-size:11px">${escapeHtml(inc.monitor_name)}: ${escapeHtml(inc.cause)}</b>
+                      <span class="${isCritical ? '' : 'warn-badge'}">${isCritical ? 'Критический' : 'Деградация'}</span>
+                    </div>
+                    <p style="margin:0;font-size:10px;color:var(--muted)">
+                      Начался ${startedMin > 0 ? `${startedMin} мин назад` : 'только что'} (${formatIncidentTime(inc.started_at)})
+                    </p>
+                  </div>
                 </div>
-              </div>
-            `;
-          })
-          .join('');
+              `;
+            })
+            .join('');
+        }
       }
+
+      // 2. Render Resolved Incidents
+      if (resolvedListEl) {
+        if (recent.length === 0) {
+          resolvedListEl.innerHTML = `
+            <div style="padding:26px 20px;text-align:center;color:var(--muted);font-size:11px">
+              <i data-lucide="shield-check" style="width:28px;height:28px;color:var(--green);margin-bottom:8px"></i>
+              <p style="margin:0;font-weight:600;color:var(--text);font-size:12px">Завершённых инцидентов нет</p>
+              <p style="margin:4px 0 0;font-size:10px;color:var(--muted)">За историю наблюдений не зафиксировано сбоев.</p>
+            </div>
+          `;
+        } else {
+          resolvedListEl.innerHTML = recent
+            .map((inc) => {
+              return `
+                <div class="incident-row">
+                  <span class="incident-dot resolved-dot"><i data-lucide="check-circle-2"></i></span>
+                  <div style="flex:1">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+                      <b style="font-size:11px">${escapeHtml(inc.monitor_name)}</b>
+                      <span class="resolved-badge"><i data-lucide="check" style="width:10px;height:10px;vertical-align:-1px"></i> Устранено</span>
+                      <span class="duration-badge">Длился: ${formatDuration(inc.duration_seconds)}</span>
+                    </div>
+                    <p style="margin:0;font-size:10px;color:var(--text)">
+                      ${escapeHtml(inc.cause)}
+                    </p>
+                    <p style="margin:4px 0 0;font-size:9px;color:var(--muted)">
+                      Начало: ${formatIncidentTime(inc.started_at)} · Восстановлен: ${formatIncidentTime(inc.resolved_at)}
+                    </p>
+                  </div>
+                </div>
+              `;
+            })
+            .join('');
+        }
+      }
+
+      // 3. Render 24h Check Issue Heartbeats
+      if (issuesListEl) {
+        if (issueHeartbeats.length === 0) {
+          issuesListEl.innerHTML = `
+            <div style="padding:26px 20px;text-align:center;color:var(--muted);font-size:11px">
+              <i data-lucide="sparkles" style="width:28px;height:28px;color:var(--green);margin-bottom:8px"></i>
+              <p style="margin:0;font-weight:600;color:var(--text);font-size:12px">За последние 24 часа все проверки прошли идеально</p>
+              <p style="margin:4px 0 0;font-size:10px;color:var(--muted)">Текущий показатель доступности Uptime составляет 100.0%.</p>
+            </div>
+          `;
+        } else {
+          issuesListEl.innerHTML = issueHeartbeats
+            .map((hb) => {
+              const isDown = hb.status === 'down';
+              const dotClass = isDown ? 'critical-dot' : 'warn-dot';
+              const icon = isDown ? 'x' : 'alert-triangle';
+              return `
+                <div class="issue-row">
+                  <span class="incident-dot ${dotClass}" style="flex:0 0 28px"><i data-lucide="${icon}"></i></span>
+                  <div style="flex:1">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+                      <b style="font-size:11px">${escapeHtml(hb.monitor_name)}</b>
+                      <span class="${isDown ? 'issue-badge-down' : 'issue-badge-warn'}">
+                        ${isDown ? 'Сбой проверки' : 'Замедление'}
+                      </span>
+                      <small style="color:var(--muted);font-size:9px;margin-left:auto">${formatIncidentTime(hb.created_at)} (${formatRelativeTime(hb.created_at)})</small>
+                    </div>
+                    <p style="margin:0;font-size:10px;color:var(--text)">
+                      ${escapeHtml(hb.error || (hb.latency ? `Задержка отклика ${hb.latency} мс` : 'Сбой'))}
+                    </p>
+                    <div style="display:flex;align-items:center;gap:12px;margin-top:4px;font-size:9px;color:var(--muted)">
+                      <span>Отклик: <b>${hb.latency || 0} мс</b></span>
+                      ${hb.status_code ? `<span>HTTP Код: <b>${hb.status_code}</b></span>` : ''}
+                      <span style="color:var(--amber)">• Учтено в расчёте Uptime за 24 ч</span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            })
+            .join('');
+        }
+      }
+
       lucide.createIcons();
     } catch (err) {
       console.error('Error loading incidents:', err);

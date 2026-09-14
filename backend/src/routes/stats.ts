@@ -40,11 +40,14 @@ export async function statsRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // Incidents
-  fastify.get('/incidents', async () => {
-    const active = dbQueries.getActiveIncidents();
-    const recent = dbQueries.getRecentIncidents(10);
-    return { active, recent };
+  // Incidents and issues log
+  fastify.get<{ Querystring: { monitor_id?: string } }>('/incidents', async (req) => {
+    const monitorId = req.query.monitor_id || undefined;
+    const active = dbQueries.getActiveIncidents(monitorId);
+    const recent = dbQueries.getRecentIncidents(50, monitorId);
+    const since24h = Date.now() - 24 * 60 * 60 * 1000;
+    const issueHeartbeats = dbQueries.getRecentIssuesHeartbeats(since24h, 50, monitorId);
+    return { active, recent, issueHeartbeats };
   });
 
   // Latency history for response time bar chart (last 14 data points / hours)
