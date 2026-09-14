@@ -832,6 +832,7 @@ body.route-incidents #sectionBottomGrid {
 .error-help-btn svg {
   width: 11px;
   height: 11px;
+  pointer-events: none;
 }
 
 .error-help-popover {

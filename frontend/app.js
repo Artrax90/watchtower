@@ -2016,7 +2016,7 @@
 
   function renderErrorHelpBtn(errorText) {
     if (!errorText) return '';
-    const cleanErr = escapeAttr(String(errorText));
+    const cleanErr = escapeAttr(String(errorText).replace(/\r?\n+/g, ' ').trim());
     return `<button type="button" class="error-help-btn" data-error="${cleanErr}" onclick="window.toggleErrorHelp(event, this)" onmouseenter="window.hoverErrorHelp(event, this)" onmouseleave="window.leaveErrorHelp(event)" title="Что значит эта ошибка? (Нажмите для фиксации)"><i data-lucide="help-circle"></i></button>`;
   }
 
@@ -2039,9 +2039,13 @@
     if (rect.bottom + 260 > window.innerHeight && rect.top > 260) {
       top = rect.top - 250;
     }
+    if (top + 260 > window.innerHeight) {
+      top = Math.max(15, window.innerHeight - 275);
+    }
+    if (top < 15) top = 15;
 
-    popover.style.left = `${left}px`;
-    popover.style.top = `${top}px`;
+    popover.style.left = `${Math.round(left)}px`;
+    popover.style.top = `${Math.round(top)}px`;
   }
 
   window.showErrorHelpContent = function (errorText, btn, isPinned = false) {
@@ -2050,10 +2054,15 @@
     if (!popover) return;
 
     const info = getErrorExplanation(errorText);
-    document.getElementById('ehTitle').textContent = info.title;
-    document.getElementById('ehCategory').textContent = info.category;
-    document.getElementById('ehDescription').textContent = info.description;
-    document.getElementById('ehRecommendation').textContent = info.recommendation;
+    const ehTitle = document.getElementById('ehTitle');
+    const ehCategory = document.getElementById('ehCategory');
+    const ehDescription = document.getElementById('ehDescription');
+    const ehRecommendation = document.getElementById('ehRecommendation');
+
+    if (ehTitle) ehTitle.textContent = info.title;
+    if (ehCategory) ehCategory.textContent = info.category;
+    if (ehDescription) ehDescription.textContent = info.description;
+    if (ehRecommendation) ehRecommendation.textContent = info.recommendation;
 
     positionErrorHelpPopover(btn);
     popover.style.display = 'block';
@@ -2066,9 +2075,11 @@
 
   window.hoverErrorHelp = function (e, btn) {
     if (isErrorHelpPinned) return;
-    const errText = btn.getAttribute('data-error');
+    const targetBtn = (btn && btn.getAttribute) ? btn : (e ? e.target.closest('.error-help-btn') : null);
+    if (!targetBtn) return;
+    const errText = targetBtn.getAttribute('data-error');
     if (!errText) return;
-    window.showErrorHelpContent(errText, btn, false);
+    window.showErrorHelpContent(errText, targetBtn, false);
   };
 
   window.leaveErrorHelp = function () {
@@ -2082,15 +2093,20 @@
   };
 
   window.toggleErrorHelp = function (e, btn) {
-    if (e) e.stopPropagation();
-    const errText = btn.getAttribute('data-error');
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const targetBtn = (btn && btn.getAttribute) ? btn : (e ? e.target.closest('.error-help-btn') : null);
+    if (!targetBtn) return;
+    const errText = targetBtn.getAttribute('data-error');
     if (!errText) return;
 
     const popover = document.getElementById('errorHelpPopover');
     if (isErrorHelpPinned && popover && popover.style.display === 'block') {
       window.closeErrorHelp();
     } else {
-      window.showErrorHelpContent(errText, btn, true);
+      window.showErrorHelpContent(errText, targetBtn, true);
     }
   };
 
@@ -2118,6 +2134,12 @@
       if (popover && !popover.contains(e.target) && !e.target.closest('.error-help-btn')) {
         window.closeErrorHelp();
       }
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isErrorHelpPinned) {
+      window.closeErrorHelp();
     }
   });
 
